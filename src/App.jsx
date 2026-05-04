@@ -264,7 +264,50 @@ const [isLoadingLive, setIsLoadingLive] = useState(false);
   useEffect(() => {
     localStorage.setItem("campaign-dashboard-clean", JSON.stringify(rows));
   }, [rows]);
+async function loadLivePrices() {
+  const apiKey = import.meta.env.VITE_FINNHUB_API_KEY;
 
+  if (!apiKey) {
+    alert("חסר Finnhub API Key");
+    return;
+  }
+
+  const tickers = [...new Set(rows.map(r => r.ticker).filter(Boolean))];
+
+  if (!tickers.length) return;
+
+  setIsLoadingLive(true);
+
+  try {
+    const results = await Promise.all(
+      tickers.map(async (ticker) => {
+        const res = await fetch(
+          `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`
+        );
+        const data = await res.json();
+        return [ticker, data.c];
+      })
+    );
+
+        const map = Object.fromEntries(results);
+
+    setLivePrices(map);
+
+    setRows((prev) =>
+      prev.map((r) =>
+        map[r.ticker]
+          ? { ...r, lastAdd: String(map[r.ticker]) }
+          : r
+      )
+    );
+  } catch (e) {
+    alert("שגיאה בטעינת מחירים");
+  } finally {
+    setIsLoadingLive(false);
+  }
+}
+    
+}
   const visibleRows = useMemo(
     () => rows.filter((r) => (viewMode === "history" ? r.status === "סגור" : r.status !== "סגור")),
     [rows, viewMode]
