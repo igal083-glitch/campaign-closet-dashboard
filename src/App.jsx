@@ -797,6 +797,12 @@ ${fileName}`);
           <button onClick={exportPdfReport} className="rounded border border-blue-500 px-4 py-2 text-sm font-bold text-blue-300">PDF דוח ביצועים</button>
           <label className="cursor-pointer rounded border border-amber-500 px-4 py-2 text-sm font-bold text-amber-300">טעינת גיבוי<input type="file" accept=".json,application/json" onChange={(e) => importBackup(e.target.files?.[0])} className="hidden" /></label>
           <button onClick={addRow} className="rounded bg-emerald-600 px-4 py-2 text-sm font-bold">שורה חדשה</button>
+      <button
+  onClick={loadLivePrices}
+  className="rounded border border-emerald-500 px-4 py-2 text-sm font-bold text-emerald-300"
+>
+  טען מחירים
+</button>
         </div>
       </div>
 
