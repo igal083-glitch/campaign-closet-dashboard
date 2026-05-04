@@ -259,7 +259,8 @@ export default function ClosetDashboard() {
   const [selectedTicker, setSelectedTicker] = useState("FOSL");
   const [tickerDrafts, setTickerDrafts] = useState({});
   const [closeModal, setCloseModal] = useState(null);
-
+const [livePrices, setLivePrices] = useState({});
+const [isLoadingLive, setIsLoadingLive] = useState(false);
   useEffect(() => {
     localStorage.setItem("campaign-dashboard-clean", JSON.stringify(rows));
   }, [rows]);
