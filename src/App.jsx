@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-dashboard-clean-v3-trade-management";
+const STORAGE_KEY = "campaign-dashboard-clean-v4-trade-management";
 
 const actions = [
   "כניסה",
@@ -122,8 +122,8 @@ function getPositionMath(row) {
   let realizedPnl = 0;
   let hasRealized = false;
 
-  const hasJournalBuys = journal.some((j) =>
-    (j.action === "כניסה" || j.action === "הוספה") && num(j.qty) && num(j.price)
+  const hasJournalBuys = journal.some(
+    (j) => (j.action === "כניסה" || j.action === "הוספה") && num(j.qty) && num(j.price)
   );
 
   if (!hasJournalBuys) {
@@ -222,6 +222,7 @@ function closedPnl(row) {
   if ((row.status || "").trim() !== "סגור") return null;
   const math = getPositionMath(row);
   if (math.realizedPnl !== null) return math.realizedPnl;
+
   const shares = num(row.shares);
   const entry = num(row.entry);
   const exit = getExitPrice(row);
@@ -232,7 +233,7 @@ function closedPnl(row) {
 function closedReturn(row) {
   const pnl = closedPnl(row);
   const math = getPositionMath(row);
-  const invested = math.buyCost || ((num(row.shares) || 0) * (num(row.entry) || 0));
+  const invested = math.buyCost || (num(row.shares) || 0) * (num(row.entry) || 0);
   if (pnl === null || !invested) return null;
   return (pnl / invested) * 100;
 }
@@ -270,7 +271,7 @@ function getTradeManagement(row) {
       structure: "חסר כניסה / מחיר נוכחי / סטופ.",
       risk: "אי אפשר למדוד Risk Distance.",
       management: "השלם נתונים לפני החלטת ניהול.",
-      journalQuality: "בדוק שיש תזה, סטופ, ופעולות יומן מסודרות.",
+      journalQuality: "בדוק שיש תזה, סטופ ופעולות יומן.",
     };
   }
 
@@ -368,6 +369,7 @@ export default function ClosetDashboard() {
     try {
       const saved =
         localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem("campaign-dashboard-clean-v3-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v2") ||
         localStorage.getItem("campaign-dashboard-clean");
 
@@ -382,6 +384,7 @@ export default function ClosetDashboard() {
   const [selectedId, setSelectedId] = useState(starterData[0].id);
   const [tickerDrafts, setTickerDrafts] = useState({});
   const [closeModal, setCloseModal] = useState(null);
+  const [showEquityHelp, setShowEquityHelp] = useState(false);
   const [isLoadingLive, setIsLoadingLive] = useState(false);
 
   useEffect(() => {
@@ -400,6 +403,7 @@ export default function ClosetDashboard() {
     const pnlList = closed.map(closedPnl).filter((v) => v !== null);
     const winners = pnlList.filter((v) => v > 0).length;
     const losers = pnlList.filter((v) => v < 0).length;
+
     return {
       total: rows.length,
       active: rows.filter((r) => r.status !== "סגור").length,
@@ -421,10 +425,92 @@ export default function ClosetDashboard() {
     return result;
   }, [rows]);
 
+  const patternPerformance = useMemo(() => {
+    const map = {};
+    rows.filter((r) => r.status === "סגור").forEach((r) => {
+      const pnl = closedPnl(r);
+      if (pnl === null) return;
+
+      const key = r.pattern || "ללא תבנית";
+      if (!map[key]) map[key] = { trades: 0, wins: 0, losses: 0, totalPnl: 0 };
+
+      map[key].trades += 1;
+      map[key].totalPnl += pnl;
+      if (pnl > 0) map[key].wins += 1;
+      if (pnl < 0) map[key].losses += 1;
+    });
+
+    return Object.entries(map).map(([pattern, data]) => ({
+      pattern,
+      ...data,
+      winRate: data.trades ? (data.wins / data.trades) * 100 : 0,
+      expectancy: data.trades ? data.totalPnl / data.trades : 0,
+    }));
+  }, [rows]);
+
+  const durationPerformance = useMemo(() => {
+    const buckets = {
+      "0-7 ימים": { trades: 0, totalPnl: 0 },
+      "1-4 שבועות": { trades: 0, totalPnl: 0 },
+      "1-3 חודשים": { trades: 0, totalPnl: 0 },
+      "3+ חודשים": { trades: 0, totalPnl: 0 },
+    };
+
+    rows.filter((r) => r.status === "סגור").forEach((r) => {
+      const days = durationDays(r);
+      const pnl = closedPnl(r);
+      if (days === null || pnl === null) return;
+
+      let key = "3+ חודשים";
+      if (days <= 7) key = "0-7 ימים";
+      else if (days <= 30) key = "1-4 שבועות";
+      else if (days <= 90) key = "1-3 חודשים";
+
+      buckets[key].trades += 1;
+      buckets[key].totalPnl += pnl;
+    });
+
+    return Object.entries(buckets).map(([label, data]) => ({
+      label,
+      trades: data.trades,
+      totalPnl: data.totalPnl,
+      avg: data.trades ? data.totalPnl / data.trades : 0,
+    }));
+  }, [rows]);
+
+  const patternDurationCombo = useMemo(() => {
+    const map = {};
+
+    rows.filter((r) => r.status === "סגור").forEach((r) => {
+      const days = durationDays(r);
+      const pnl = closedPnl(r);
+      if (days === null || pnl === null) return;
+
+      let bucket = "3+ חודשים";
+      if (days <= 7) bucket = "0-7 ימים";
+      else if (days <= 30) bucket = "1-4 שבועות";
+      else if (days <= 90) bucket = "1-3 חודשים";
+
+      const key = `${r.pattern || "ללא תבנית"} | ${bucket}`;
+      if (!map[key]) map[key] = { trades: 0, totalPnl: 0 };
+
+      map[key].trades += 1;
+      map[key].totalPnl += pnl;
+    });
+
+    return Object.entries(map).map(([label, data]) => ({
+      label,
+      trades: data.trades,
+      totalPnl: data.totalPnl,
+      avg: data.trades ? data.totalPnl / data.trades : 0,
+    }));
+  }, [rows]);
+
   const equityStats = useMemo(() => {
     let equity = 0;
     let peak = 0;
     let maxDrawdown = 0;
+
     const curve = rows
       .filter((r) => r.status === "סגור")
       .map((r) => {
@@ -457,6 +543,7 @@ export default function ClosetDashboard() {
     }
 
     setIsLoadingLive(true);
+
     try {
       const results = await Promise.all(
         tickers.map(async (ticker) => {
@@ -467,7 +554,10 @@ export default function ClosetDashboard() {
       );
 
       const prices = Object.fromEntries(results.filter(([, price]) => price && price > 0));
-      setRows((prev) => prev.map((row) => (prices[row.ticker] ? { ...row, lastAdd: String(prices[row.ticker]) } : row)));
+
+      setRows((prev) =>
+        prev.map((row) => (prices[row.ticker] ? { ...row, lastAdd: String(prices[row.ticker]) } : row))
+      );
     } catch {
       alert("שגיאה בטעינת מחירי לייב");
     } finally {
@@ -485,12 +575,15 @@ export default function ClosetDashboard() {
   function commitTicker(index) {
     const row = visibleRows[index];
     if (!row || row.ticker) return;
+
     const draft = String(tickerDrafts[row.id] || "").trim().toUpperCase();
     if (!draft) return;
+
     if (rows.some((r) => r.ticker === draft)) {
       alert("הטיקר כבר קיים במערכת");
       return;
     }
+
     patchRow(row.id, (old) => ({ ...old, ticker: draft }));
     setSelectedId(row.id);
     setTickerDrafts((prev) => ({ ...prev, [row.id]: "" }));
@@ -498,6 +591,7 @@ export default function ClosetDashboard() {
 
   function addRow() {
     const id = makeId();
+
     setRows((prev) => [
       ...prev,
       {
@@ -518,6 +612,7 @@ export default function ClosetDashboard() {
         journal: [],
       },
     ]);
+
     setViewMode("active");
     setSelectedId(id);
   }
@@ -525,14 +620,24 @@ export default function ClosetDashboard() {
   function openCloseModal(index) {
     const row = visibleRows[index];
     if (!row) return;
-    const openQty = openShares(row) || num(row.shares) || 0;
-    setCloseModal({ id: row.id, ticker: row.ticker, qty: String(openQty), price: row.exitPrice || row.lastAdd || row.entry || "", reason: "" });
+
+    const qty = openShares(row) || num(row.shares) || 0;
+
+    setCloseModal({
+      id: row.id,
+      ticker: row.ticker,
+      qty: String(qty),
+      price: row.exitPrice || row.lastAdd || row.entry || "",
+      reason: "",
+    });
   }
 
   function confirmCloseTrade() {
     if (!closeModal) return;
+
     const qty = num(closeModal.qty);
     const price = num(closeModal.price);
+
     if (!qty || !price) {
       alert("חובה להזין כמות ומחיר יציאה");
       return;
@@ -545,9 +650,17 @@ export default function ClosetDashboard() {
       exitPrice: closeModal.price,
       journal: [
         ...(old.journal || []),
-        { date: today(), action: "יציאה מלאה", qty: closeModal.qty, price: closeModal.price, stop: old.stop || "", note: closeModal.reason || "סגירה דרך חלון סגירה" },
+        {
+          date: today(),
+          action: "יציאה מלאה",
+          qty: closeModal.qty,
+          price: closeModal.price,
+          stop: old.stop || "",
+          note: closeModal.reason || "סגירה דרך חלון סגירה",
+        },
       ],
     }));
+
     setViewMode("history");
     setSelectedId(closeModal.id);
     setCloseModal(null);
@@ -555,8 +668,13 @@ export default function ClosetDashboard() {
 
   function ignoreTrade() {
     if (!closeModal) return;
+
     setRows((prev) => prev.filter((r) => r.id !== closeModal.id));
-    if (selectedId === closeModal.id) setSelectedId("");
+
+    if (selectedId === closeModal.id) {
+      setSelectedId("");
+    }
+
     setCloseModal(null);
   }
 
@@ -567,6 +685,7 @@ export default function ClosetDashboard() {
 
   function addJournalLine() {
     if (!selected) return;
+
     patchRow(selected.id, (old) => ({
       ...old,
       journal: [...(old.journal || []), { date: today(), action: "הוספה", qty: "", price: "", stop: "", note: "" }],
@@ -575,11 +694,14 @@ export default function ClosetDashboard() {
 
   function updateJournal(index, field, value) {
     if (!selected) return;
+
     patchRow(selected.id, (old) => {
       const journal = [...(old.journal || [])];
       journal[index] = { ...journal[index], [field]: value };
+
       const math = getPositionMath({ ...old, journal });
       const exit = [...journal].reverse().find((j) => j.action === "יציאה מלאה" && String(j.price || "").trim());
+
       return {
         ...old,
         journal,
@@ -599,8 +721,16 @@ export default function ClosetDashboard() {
 
   function uploadChart(file) {
     if (!file || !selected) return;
+
     const reader = new FileReader();
-    reader.onload = () => patchRow(selected.id, (old) => ({ ...old, chartImage: String(reader.result || ""), chartImageName: file.name }));
+    reader.onload = () => {
+      patchRow(selected.id, (old) => ({
+        ...old,
+        chartImage: String(reader.result || ""),
+        chartImageName: file.name,
+      }));
+    };
+
     reader.readAsDataURL(file);
   }
 
@@ -608,30 +738,41 @@ export default function ClosetDashboard() {
     const name = window.prompt("איך לקרוא לקובץ?", "campaign-backup") || "campaign-backup";
     const blob = new Blob([JSON.stringify({ rows }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
+
     const a = document.createElement("a");
     a.href = url;
     a.download = `${name}-${today().replaceAll("/", "-")}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
+
     URL.revokeObjectURL(url);
   }
 
   function importBackup(file) {
     if (!file) return;
+
     const reader = new FileReader();
+
     reader.onload = () => {
       try {
         const parsed = JSON.parse(String(reader.result || "{}"));
         const imported = Array.isArray(parsed) ? parsed : parsed.rows;
-        if (!Array.isArray(imported)) return alert("קובץ לא תקין");
+
+        if (!Array.isArray(imported)) {
+          alert("קובץ לא תקין");
+          return;
+        }
+
         const cleaned = imported.map((r) => ({ ...r, id: r.id || makeId(r.ticker) }));
+
         setRows(cleaned);
         setSelectedId(cleaned[0]?.id || "");
       } catch {
         alert("לא הצלחתי לטעון את הגיבוי");
       }
     };
+
     reader.readAsText(file);
   }
 
@@ -657,29 +798,57 @@ export default function ClosetDashboard() {
         {cards.map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-right">
             <div className="text-xs text-zinc-500">{label}</div>
-            <div className={`mt-1 text-2xl font-extrabold ${color}`} dir="ltr">{value}</div>
+            <div className={`mt-1 text-2xl font-extrabold ${color}`} dir="ltr">
+              {value}
+            </div>
           </div>
         ))}
       </div>
 
       <div className="mb-4 flex flex-wrap justify-between gap-3">
         <div className="flex gap-2">
-          <button onClick={() => setViewMode("active")} className={`rounded px-4 py-2 text-sm font-bold ${viewMode === "active" ? "bg-emerald-600" : "border border-zinc-700"}`}>
+          <button
+            onClick={() => setViewMode("active")}
+            className={`rounded px-4 py-2 text-sm font-bold ${
+              viewMode === "active" ? "bg-emerald-600" : "border border-zinc-700"
+            }`}
+          >
             עסקאות פעילות
           </button>
-          <button onClick={() => setViewMode("history")} className={`rounded px-4 py-2 text-sm font-bold ${viewMode === "history" ? "bg-amber-500 text-black" : "border border-zinc-700"}`}>
+
+          <button
+            onClick={() => setViewMode("history")}
+            className={`rounded px-4 py-2 text-sm font-bold ${
+              viewMode === "history" ? "bg-amber-500 text-black" : "border border-zinc-700"
+            }`}
+          >
             היסטוריה
           </button>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button onClick={exportBackup} className="rounded bg-amber-500 px-4 py-2 text-sm font-bold text-black">גיבוי לקובץ</button>
+          <button onClick={exportBackup} className="rounded bg-amber-500 px-4 py-2 text-sm font-bold text-black">
+            גיבוי לקובץ
+          </button>
+
           <label className="cursor-pointer rounded border border-amber-500 px-4 py-2 text-sm font-bold text-amber-300">
             טעינת גיבוי
-            <input type="file" accept=".json,application/json" onChange={(e) => importBackup(e.target.files?.[0])} className="hidden" />
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(e) => importBackup(e.target.files?.[0])}
+              className="hidden"
+            />
           </label>
-          <button onClick={addRow} className="rounded bg-emerald-600 px-4 py-2 text-sm font-bold">שורה חדשה</button>
-          <button onClick={loadLivePrices} className="rounded border border-emerald-500 px-4 py-2 text-sm font-bold text-emerald-300">
+
+          <button onClick={addRow} className="rounded bg-emerald-600 px-4 py-2 text-sm font-bold">
+            שורה חדשה
+          </button>
+
+          <button
+            onClick={loadLivePrices}
+            className="rounded border border-emerald-500 px-4 py-2 text-sm font-bold text-emerald-300"
+          >
             {isLoadingLive ? "טוען..." : "טען מחירים"}
           </button>
         </div>
@@ -687,12 +856,32 @@ export default function ClosetDashboard() {
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800">
         <div className="grid min-w-[1280px] grid-cols-[110px_110px_110px_100px_120px_120px_120px_130px_110px_100px_100px_90px] gap-4 bg-zinc-900 p-3 text-sm font-bold text-zinc-300">
-          <div>תאריך</div><div>טיקר</div><div>כמות קנייה</div><div>כניסה</div><div>סטופ</div><div>פוזיציה</div><div>רווח חי</div><div>מחיר נוכחי</div><div>מצב</div><div>יציאה</div><div>P/L</div><div></div>
+          <div>תאריך</div>
+          <div>טיקר</div>
+          <div>כמות קנייה</div>
+          <div>כניסה</div>
+          <div>סטופ</div>
+          <div>פוזיציה</div>
+          <div>רווח חי</div>
+          <div>מחיר נוכחי</div>
+          <div>מצב</div>
+          <div>יציאה</div>
+          <div>P/L</div>
+          <div></div>
         </div>
 
         {visibleRows.map((row, index) => (
-          <div key={row.id} className="grid min-w-[1280px] grid-cols-[110px_110px_110px_100px_120px_120px_120px_130px_110px_100px_100px_90px] items-center gap-4 border-t border-zinc-800 p-3">
-            <input value={row.date} onChange={(e) => updateVisibleRow(index, "date", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center" dir="ltr" />
+          <div
+            key={row.id}
+            className="grid min-w-[1280px] grid-cols-[110px_110px_110px_100px_120px_120px_120px_130px_110px_100px_100px_90px] items-center gap-4 border-t border-zinc-800 p-3"
+          >
+            <input
+              value={row.date}
+              onChange={(e) => updateVisibleRow(index, "date", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center"
+              dir="ltr"
+            />
+
             <input
               value={row.ticker || tickerDrafts[row.id] || ""}
               readOnly={Boolean(row.ticker)}
@@ -700,23 +889,100 @@ export default function ClosetDashboard() {
               onChange={(e) => setTickerDrafts((p) => ({ ...p, [row.id]: e.target.value.toUpperCase() }))}
               onKeyDown={(e) => e.key === "Enter" && commitTicker(index)}
               onBlur={() => commitTicker(index)}
-              className={`rounded border px-2 py-1 text-center font-bold ${row.ticker ? "border-zinc-800 bg-zinc-950 text-zinc-400" : "border-amber-500 bg-black text-white"}`}
+              className={`rounded border px-2 py-1 text-center font-bold ${
+                row.ticker ? "border-zinc-800 bg-zinc-950 text-zinc-400" : "border-amber-500 bg-black text-white"
+              }`}
               dir="ltr"
             />
-            <input value={row.shares} onChange={(e) => updateVisibleRow(index, "shares", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center font-bold" dir="ltr" />
-            <input value={row.entry} onChange={(e) => updateVisibleRow(index, "entry", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-blue-300" dir="ltr" />
-            <input value={row.stop} onChange={(e) => updateVisibleRow(index, "stop", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-red-400" dir="ltr" />
-            <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-center font-bold text-emerald-300" dir="ltr">{money(positionValue(row))}</div>
-            <div className={`rounded border px-2 py-1 text-center font-bold ${unrealizedPnl(row) === null ? "border-zinc-800 text-zinc-500" : unrealizedPnl(row) >= 0 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-red-500/40 bg-red-500/10 text-red-400"}`} dir="ltr">{money(unrealizedPnl(row))}</div>
-            <input value={row.lastAdd || ""} onChange={(e) => updateVisibleRow(index, "lastAdd", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-emerald-400" dir="ltr" />
-            <select value={row.status} onChange={(e) => updateVisibleRow(index, "status", e.target.value)} className={`rounded border px-2 py-1 text-center text-xs font-bold ${row.status === "פעיל" ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300" : "border-red-500/40 bg-red-500/20 text-red-400"}`}>
-              <option>פעיל</option><option>סגור</option>
+
+            <input
+              value={row.shares}
+              onChange={(e) => updateVisibleRow(index, "shares", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center font-bold"
+              dir="ltr"
+            />
+
+            <input
+              value={row.entry}
+              onChange={(e) => updateVisibleRow(index, "entry", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-blue-300"
+              dir="ltr"
+            />
+
+            <input
+              value={row.stop}
+              onChange={(e) => updateVisibleRow(index, "stop", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-red-400"
+              dir="ltr"
+            />
+
+            <div
+              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-center font-bold text-emerald-300"
+              dir="ltr"
+            >
+              {money(positionValue(row))}
+            </div>
+
+            <div
+              className={`rounded border px-2 py-1 text-center font-bold ${
+                unrealizedPnl(row) === null
+                  ? "border-zinc-800 text-zinc-500"
+                  : unrealizedPnl(row) >= 0
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : "border-red-500/40 bg-red-500/10 text-red-400"
+              }`}
+              dir="ltr"
+            >
+              {money(unrealizedPnl(row))}
+            </div>
+
+            <input
+              value={row.lastAdd || ""}
+              onChange={(e) => updateVisibleRow(index, "lastAdd", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-emerald-400"
+              dir="ltr"
+            />
+
+            <select
+              value={row.status}
+              onChange={(e) => updateVisibleRow(index, "status", e.target.value)}
+              className={`rounded border px-2 py-1 text-center text-xs font-bold ${
+                row.status === "פעיל"
+                  ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
+                  : "border-red-500/40 bg-red-500/20 text-red-400"
+              }`}
+            >
+              <option>פעיל</option>
+              <option>סגור</option>
             </select>
-            <input value={row.exitPrice || ""} onChange={(e) => updateVisibleRow(index, "exitPrice", e.target.value)} className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-amber-300" dir="ltr" />
-            <div className={`rounded border px-2 py-1 text-center font-bold ${closedPnl(row) === null ? "border-zinc-800 text-zinc-500" : closedPnl(row) >= 0 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-red-500/40 bg-red-500/10 text-red-400"}`} dir="ltr">{money(closedPnl(row))}</div>
+
+            <input
+              value={row.exitPrice || ""}
+              onChange={(e) => updateVisibleRow(index, "exitPrice", e.target.value)}
+              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-amber-300"
+              dir="ltr"
+            />
+
+            <div
+              className={`rounded border px-2 py-1 text-center font-bold ${
+                closedPnl(row) === null
+                  ? "border-zinc-800 text-zinc-500"
+                  : closedPnl(row) >= 0
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : "border-red-500/40 bg-red-500/10 text-red-400"
+              }`}
+              dir="ltr"
+            >
+              {money(closedPnl(row))}
+            </div>
+
             <div className="flex gap-2">
-              <button onClick={() => setSelectedId(row.id)} className="rounded bg-amber-500 px-3 py-1 text-sm font-bold text-black">פתח</button>
-              <button onClick={() => openCloseModal(index)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">×</button>
+              <button onClick={() => setSelectedId(row.id)} className="rounded bg-amber-500 px-3 py-1 text-sm font-bold text-black">
+                פתח
+              </button>
+              <button onClick={() => openCloseModal(index)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
+                ×
+              </button>
             </div>
           </div>
         ))}
@@ -729,24 +995,95 @@ export default function ClosetDashboard() {
               <div className="text-xl font-extrabold text-amber-300">סגירת עסקה</div>
               <div className="text-sm text-zinc-500" dir="ltr">{closeModal.ticker}</div>
             </div>
+
             <div className="space-y-3">
               <div>
                 <div className="mb-1 text-xs text-zinc-500">כמות יציאה</div>
-                <input value={closeModal.qty} onChange={(e) => setCloseModal((m) => ({ ...m, qty: e.target.value }))} className="w-full rounded border border-zinc-800 bg-black px-3 py-2 text-left text-amber-300" dir="ltr" />
+                <input
+                  value={closeModal.qty}
+                  onChange={(e) => setCloseModal((m) => ({ ...m, qty: e.target.value }))}
+                  className="w-full rounded border border-zinc-800 bg-black px-3 py-2 text-left text-amber-300"
+                  dir="ltr"
+                />
               </div>
+
               <div>
                 <div className="mb-1 text-xs text-zinc-500">מחיר יציאה</div>
-                <input value={closeModal.price} onChange={(e) => setCloseModal((m) => ({ ...m, price: e.target.value }))} className="w-full rounded border border-zinc-800 bg-black px-3 py-2 text-left text-emerald-300" dir="ltr" />
+                <input
+                  value={closeModal.price}
+                  onChange={(e) => setCloseModal((m) => ({ ...m, price: e.target.value }))}
+                  className="w-full rounded border border-zinc-800 bg-black px-3 py-2 text-left text-emerald-300"
+                  dir="ltr"
+                />
               </div>
+
               <div>
                 <div className="mb-1 text-xs text-zinc-500">סיבת סגירה / הערה</div>
-                <textarea value={closeModal.reason} onChange={(e) => setCloseModal((m) => ({ ...m, reason: e.target.value }))} className="h-20 w-full rounded border border-zinc-800 bg-black px-3 py-2 text-right" />
+                <textarea
+                  value={closeModal.reason}
+                  onChange={(e) => setCloseModal((m) => ({ ...m, reason: e.target.value }))}
+                  className="h-20 w-full rounded border border-zinc-800 bg-black px-3 py-2 text-right"
+                />
               </div>
             </div>
+
             <div className="mt-5 flex justify-between gap-2">
-              <button onClick={ignoreTrade} className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300">התעלם</button>
-              <button onClick={() => setCloseModal(null)} className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300">ביטול</button>
-              <button onClick={confirmCloseTrade} className="rounded bg-amber-500 px-4 py-2 text-sm font-bold text-black">אשר סגירה</button>
+              <button onClick={ignoreTrade} className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300">
+                התעלם
+              </button>
+              <button onClick={() => setCloseModal(null)} className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300">
+                ביטול
+              </button>
+              <button onClick={confirmCloseTrade} className="rounded bg-amber-500 px-4 py-2 text-sm font-bold text-black">
+                אשר סגירה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEquityHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+            <div className="mb-4 text-right">
+              <div className="text-xl font-extrabold text-amber-300">הסבר Equity Curve</div>
+              <div className="mt-1 text-sm text-zinc-500">החלון הזה מודד רק עסקאות סגורות.</div>
+            </div>
+
+            <div className="space-y-3 text-right text-sm text-zinc-300">
+              <div>
+                <span className="font-bold text-amber-300">Equity Curve:</span>
+                <br />
+                גרף שמראה את הרווח או ההפסד המצטבר שלך לאורך זמן.
+              </div>
+
+              <div>
+                <span className="font-bold text-amber-300">Equity סגור:</span>
+                <br />
+                סך הרווח או ההפסד בפועל מעסקאות שכבר נסגרו.
+              </div>
+
+              <div>
+                <span className="font-bold text-amber-300">Peak:</span>
+                <br />
+                השיא הגבוה ביותר שהגעת אליו ברווח המצטבר.
+              </div>
+
+              <div>
+                <span className="font-bold text-amber-300">Max DD:</span>
+                <br />
+                הירידה הכי גדולה מהשיא. זה Drawdown — מדד סיכון חשוב מאוד.
+              </div>
+
+              <div className="rounded border border-zinc-800 bg-black p-3 text-xs text-zinc-500">
+                אם אין עסקאות סגורות — כל הנתונים יישארו $0.00.
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button onClick={() => setShowEquityHelp(false)} className="rounded bg-amber-500 px-4 py-2 text-sm font-bold text-black">
+                סגור
+              </button>
             </div>
           </div>
         </div>
@@ -755,17 +1092,24 @@ export default function ClosetDashboard() {
       {selected && (
         <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
           <div className="mb-5 flex items-center justify-between">
-            <button onClick={() => setSelectedId("")} className="rounded border border-zinc-700 px-3 py-2 text-sm text-zinc-400">סגור מגירה</button>
+            <button onClick={() => setSelectedId("")} className="rounded border border-zinc-700 px-3 py-2 text-sm text-zinc-400">
+              סגור מגירה
+            </button>
+
             <div className="text-right">
               <h2 className="text-2xl font-extrabold" dir="ltr">{selected.ticker}</h2>
-              <div className="text-sm text-zinc-500">{selected.status === "סגור" ? "מגירת היסטוריה" : "מגירה פנימית לניהול עסקה"}</div>
+              <div className="text-sm text-zinc-500">
+                {selected.status === "סגור" ? "מגירת היסטוריה" : "מגירה פנימית לניהול עסקה"}
+              </div>
             </div>
           </div>
 
           {tradeManagement && selected.status !== "סגור" && (
             <div className={`mb-5 rounded-xl border p-4 ${colorClasses(tradeManagement.color)}`}>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <div className="rounded bg-black/40 px-3 py-1 text-sm font-extrabold" dir="ltr">{tradeManagement.status}</div>
+                <div className="rounded bg-black/40 px-3 py-1 text-sm font-extrabold" dir="ltr">
+                  {tradeManagement.status}
+                </div>
                 <div className="text-right text-lg font-extrabold">Trade Management Assistant</div>
               </div>
 
@@ -776,14 +1120,17 @@ export default function ClosetDashboard() {
                   <div className="mb-1 text-xs font-bold text-zinc-400">Add Decision / החלטת הוספה</div>
                   <div className="text-sm font-bold">{tradeManagement.addDecision}</div>
                 </div>
+
                 <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
                   <div className="mb-1 text-xs font-bold text-zinc-400">Structure / מבנה</div>
                   <div className="text-sm">{tradeManagement.structure}</div>
                 </div>
+
                 <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
                   <div className="mb-1 text-xs font-bold text-zinc-400">Risk / סיכון</div>
                   <div className="text-sm">{tradeManagement.risk}</div>
                 </div>
+
                 <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
                   <div className="mb-1 text-xs font-bold text-zinc-400">Management / ניהול</div>
                   <div className="text-sm">{tradeManagement.management}</div>
@@ -791,7 +1138,8 @@ export default function ClosetDashboard() {
               </div>
 
               <div className="mt-3 rounded border border-black/30 bg-black/30 p-3 text-right text-xs text-zinc-300">
-                <span className="font-bold text-amber-300">Journal Quality: </span>{tradeManagement.journalQuality}
+                <span className="font-bold text-amber-300">Journal Quality: </span>
+                {tradeManagement.journalQuality}
               </div>
             </div>
           )}
@@ -804,7 +1152,11 @@ export default function ClosetDashboard() {
             <InfoCard label="כמות פתוחה" value={openShares(selected)} color="text-amber-300" />
             <InfoCard label="Avg" value={avgCost(selected) ? Number(avgCost(selected)).toFixed(2) : "—"} color="text-blue-300" />
             <InfoCard label="פוזיציה" value={money(positionValue(selected))} color="text-emerald-300" />
-            <InfoCard label="רווח חי" value={money(unrealizedPnl(selected))} color={(unrealizedPnl(selected) || 0) >= 0 ? "text-emerald-300" : "text-red-400"} />
+            <InfoCard
+              label="רווח חי"
+              value={money(unrealizedPnl(selected))}
+              color={(unrealizedPnl(selected) || 0) >= 0 ? "text-emerald-300" : "text-red-400"}
+            />
             <InfoCard label="מצב" value={selected.status} color={selected.status === "סגור" ? "text-red-400" : "text-emerald-300"} />
             <InfoCard label="מס׳ הוספות" value={getAddCount(selected)} color="text-amber-300" />
             <InfoCard label="משך ימים" value={durationDays(selected) ?? "—"} color="text-amber-300" />
@@ -814,19 +1166,42 @@ export default function ClosetDashboard() {
           <div className={`mb-5 grid gap-3 ${selected.status === "סגור" ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 text-right text-sm font-bold text-amber-300">תבנית מסחר</div>
-              <select value={selected.pattern || ""} onChange={(e) => updateSelected("pattern", e.target.value)} className="mb-4 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-amber-300">
+
+              <select
+                value={selected.pattern || ""}
+                onChange={(e) => updateSelected("pattern", e.target.value)}
+                className="mb-4 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-amber-300"
+              >
                 <option value="">בחר תבנית</option>
-                {tradePatterns.map((p) => <option key={p} value={p}>{p}</option>)}
+                {tradePatterns.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
               </select>
 
               <div className="mb-2 text-right text-sm font-bold text-amber-300">תזה</div>
-              <textarea value={selected.thesis || ""} onChange={(e) => updateSelected("thesis", e.target.value)} className="h-24 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm" />
+
+              <textarea
+                value={selected.thesis || ""}
+                onChange={(e) => updateSelected("thesis", e.target.value)}
+                className="h-24 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
+              />
 
               {selected.status !== "סגור" && (
                 <div className="mt-3 rounded border border-zinc-800 bg-zinc-950 p-3">
                   <div className="mb-2 text-right text-xs font-bold text-zinc-400">קובץ גרף / צילום מסך</div>
-                  <input type="file" accept="image/*" onChange={(e) => uploadChart(e.target.files?.[0])} className="w-full rounded border border-zinc-800 bg-black p-2 text-sm text-zinc-300" />
-                  {selected.chartImageName && <div className="mt-2 text-right text-xs text-emerald-400">נשמר: {selected.chartImageName}</div>}
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => uploadChart(e.target.files?.[0])}
+                    className="w-full rounded border border-zinc-800 bg-black p-2 text-sm text-zinc-300"
+                  />
+
+                  {selected.chartImageName && (
+                    <div className="mt-2 text-right text-xs text-emerald-400">
+                      נשמר: {selected.chartImageName}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -841,26 +1216,75 @@ export default function ClosetDashboard() {
 
           <div className="rounded border border-zinc-800 bg-black p-3">
             <div className="mb-3 flex items-center justify-between">
-              <button onClick={addJournalLine} className="rounded bg-emerald-600 px-3 py-2 text-sm font-bold">פעולה +</button>
+              <button onClick={addJournalLine} className="rounded bg-emerald-600 px-3 py-2 text-sm font-bold">
+                פעולה +
+              </button>
               <div className="text-sm font-bold text-amber-300">יומן פעולות</div>
             </div>
 
             <div className="overflow-x-auto">
               <div className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
-                <div>תאריך</div><div>פעולה</div><div>כמות</div><div>מחיר</div><div>סטופ</div><div>הערה</div><div></div>
+                <div>תאריך</div>
+                <div>פעולה</div>
+                <div>כמות</div>
+                <div>מחיר</div>
+                <div>סטופ</div>
+                <div>הערה</div>
+                <div></div>
               </div>
 
               {(selected.journal || []).map((line, i) => (
-                <div key={i} className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] items-center gap-2 border-b border-zinc-900 py-2">
-                  <input value={line.date} onChange={(e) => updateJournal(i, "date", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center" dir="ltr" />
-                  <select value={line.action} onChange={(e) => updateJournal(i, "action", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1">
-                    {actions.map((a) => <option key={a}>{a}</option>)}
+                <div
+                  key={i}
+                  className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] items-center gap-2 border-b border-zinc-900 py-2"
+                >
+                  <input
+                    value={line.date}
+                    onChange={(e) => updateJournal(i, "date", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center"
+                    dir="ltr"
+                  />
+
+                  <select
+                    value={line.action}
+                    onChange={(e) => updateJournal(i, "action", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
+                  >
+                    {actions.map((a) => (
+                      <option key={a}>{a}</option>
+                    ))}
                   </select>
-                  <input value={line.qty || ""} onChange={(e) => updateJournal(i, "qty", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-amber-300" dir="ltr" />
-                  <input value={line.price || ""} onChange={(e) => updateJournal(i, "price", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center" dir="ltr" />
-                  <input value={line.stop || ""} onChange={(e) => updateJournal(i, "stop", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-red-400" dir="ltr" />
-                  <input value={line.note || ""} onChange={(e) => updateJournal(i, "note", e.target.value)} className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1" />
-                  <button onClick={() => deleteJournal(i)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">×</button>
+
+                  <input
+                    value={line.qty || ""}
+                    onChange={(e) => updateJournal(i, "qty", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-amber-300"
+                    dir="ltr"
+                  />
+
+                  <input
+                    value={line.price || ""}
+                    onChange={(e) => updateJournal(i, "price", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center"
+                    dir="ltr"
+                  />
+
+                  <input
+                    value={line.stop || ""}
+                    onChange={(e) => updateJournal(i, "stop", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-red-400"
+                    dir="ltr"
+                  />
+
+                  <input
+                    value={line.note || ""}
+                    onChange={(e) => updateJournal(i, "note", e.target.value)}
+                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
+                  />
+
+                  <button onClick={() => deleteJournal(i)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
+                    ×
+                  </button>
                 </div>
               ))}
             </div>
@@ -872,6 +1296,7 @@ export default function ClosetDashboard() {
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
             <div className="mb-3 text-right text-sm font-bold text-amber-300">ספירת תבניות מסחר</div>
+
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               {Object.entries(patternStats).map(([pattern, count]) => (
                 <div key={pattern} className="rounded border border-zinc-800 bg-black p-3 text-right">
@@ -883,24 +1308,132 @@ export default function ClosetDashboard() {
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <div className="mb-3 text-right text-sm font-bold text-amber-300">Equity Curve + Drawdown</div>
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                onClick={() => setShowEquityHelp(true)}
+                className="rounded border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300 hover:border-amber-500 hover:text-amber-300"
+              >
+                ? הסבר
+              </button>
+
+              <div className="text-right text-sm font-bold text-amber-300">
+                Equity Curve + Drawdown
+              </div>
+            </div>
+
             <div className="mb-4 grid grid-cols-3 gap-2 text-right">
-              <InfoCard label="Equity סגור" value={money(equityStats.currentEquity)} color={equityStats.currentEquity >= 0 ? "text-emerald-300" : "text-red-400"} />
+              <InfoCard
+                label="Equity סגור"
+                value={money(equityStats.currentEquity)}
+                color={equityStats.currentEquity >= 0 ? "text-emerald-300" : "text-red-400"}
+              />
               <InfoCard label="Peak" value={money(equityStats.peakEquity)} color="text-blue-300" />
               <InfoCard label="Max DD" value={money(equityStats.maxDrawdown)} color="text-red-400" />
             </div>
+
             <div className="flex h-32 items-end gap-2 border-b border-zinc-800 pb-2" dir="ltr">
               {equityStats.curve.map((p, i) => {
                 const height = Math.min(110, Math.max(8, Math.abs(p.equity) / 25));
+
                 return (
                   <div key={`${p.ticker}-${i}`} className="flex flex-col items-center gap-1">
-                    <div title={`${p.ticker}: Equity ${money(p.equity)} | DD ${money(p.drawdown)}`} className={p.equity >= 0 ? "w-3 rounded-t bg-emerald-500" : "w-3 rounded-t bg-red-500"} style={{ height: `${height}px` }} />
+                    <div
+                      title={`${p.ticker}: Equity ${money(p.equity)} | DD ${money(p.drawdown)}`}
+                      className={p.equity >= 0 ? "w-3 rounded-t bg-emerald-500" : "w-3 rounded-t bg-red-500"}
+                      style={{ height: `${height}px` }}
+                    />
                     <div className="text-[10px] text-zinc-500">{p.ticker}</div>
                   </div>
                 );
               })}
-              {equityStats.curve.length === 0 && <div className="text-sm text-zinc-500">אין עדיין עסקאות סגורות ל־Equity Curve.</div>}
+
+              {equityStats.curve.length === 0 && (
+                <div className="text-sm text-zinc-500">
+                  אין עדיין עסקאות סגורות ל־Equity Curve.
+                </div>
+              )}
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+          <div className="mb-3 text-right text-sm font-bold text-amber-300">ביצועים לפי תבנית</div>
+
+          <div className="overflow-x-auto">
+            <div className="grid min-w-[720px] grid-cols-[180px_80px_100px_120px_120px_120px] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
+              <div>תבנית</div>
+              <div>עסקאות</div>
+              <div>Win Rate</div>
+              <div>רווח כולל</div>
+              <div>Expectancy</div>
+              <div>ממוצע לעסקה</div>
+            </div>
+
+            {patternPerformance.map((p) => (
+              <div
+                key={p.pattern}
+                className="grid min-w-[720px] grid-cols-[180px_80px_100px_120px_120px_120px] gap-2 border-b border-zinc-900 py-2 text-sm"
+              >
+                <div>{p.pattern}</div>
+                <div>{p.trades}</div>
+                <div className="text-blue-300">{percent(p.winRate)}</div>
+                <div className={p.totalPnl >= 0 ? "text-emerald-300" : "text-red-400"}>{money(p.totalPnl)}</div>
+                <div className={p.expectancy >= 0 ? "text-emerald-300" : "text-red-400"}>{money(p.expectancy)}</div>
+                <div className="text-zinc-300">{money(p.totalPnl / (p.trades || 1))}</div>
+              </div>
+            ))}
+
+            {patternPerformance.length === 0 && (
+              <div className="py-3 text-sm text-zinc-500">
+                אין עדיין עסקאות סגורות עם נתוני תבנית.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+          <div className="mb-3 text-right text-sm font-bold text-amber-300">פילוח לפי זמן</div>
+
+          <div className="grid grid-cols-[140px_100px_140px_140px] gap-2 text-sm">
+            <div className="text-zinc-500">טווח</div>
+            <div className="text-zinc-500">עסקאות</div>
+            <div className="text-zinc-500">רווח כולל</div>
+            <div className="text-zinc-500">ממוצע</div>
+
+            {durationPerformance.map((d) => (
+              <React.Fragment key={d.label}>
+                <div>{d.label}</div>
+                <div>{d.trades}</div>
+                <div className={d.totalPnl >= 0 ? "text-emerald-300" : "text-red-400"}>{money(d.totalPnl)}</div>
+                <div className="text-zinc-300">{money(d.avg)}</div>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+          <div className="mb-3 text-right text-sm font-bold text-amber-300">שילוב תבנית + זמן</div>
+
+          <div className="grid grid-cols-[220px_100px_140px_140px] gap-2 text-sm">
+            <div className="text-zinc-500">תבנית + זמן</div>
+            <div className="text-zinc-500">עסקאות</div>
+            <div className="text-zinc-500">רווח כולל</div>
+            <div className="text-zinc-500">ממוצע</div>
+
+            {patternDurationCombo.map((c) => (
+              <React.Fragment key={c.label}>
+                <div>{c.label}</div>
+                <div>{c.trades}</div>
+                <div className={c.totalPnl >= 0 ? "text-emerald-300" : "text-red-400"}>{money(c.totalPnl)}</div>
+                <div className="text-zinc-300">{money(c.avg)}</div>
+              </React.Fragment>
+            ))}
+
+            {patternDurationCombo.length === 0 && (
+              <div className="col-span-4 py-3 text-sm text-zinc-500">
+                אין עדיין שילוב תבנית + זמן להצגה.
+              </div>
+            )}
           </div>
         </div>
       </div>
