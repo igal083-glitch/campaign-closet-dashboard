@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-dashboard-clean-v4-trade-management";
+const STORAGE_KEY = "campaign-dashboard-clean-v5-risk-add-plan";
 
 const actions = [
   "כניסה",
@@ -38,6 +38,10 @@ const starterData = [
     exitPrice: "",
     pattern: "פריצה / Breakout",
     thesis: "קמפיין שמחזיק מבנה אחרי פריצה. לא להדק סטופ מוקדם מדי.",
+    addTrigger: "",
+    plannedAddSize: "",
+    localStop: "",
+    addInvalidation: "",
     chartImage: "",
     chartImageName: "",
     journal: [
@@ -58,6 +62,10 @@ const starterData = [
     exitPrice: "",
     pattern: "ספייק / Spike",
     thesis: "מניית תנודתיות. לא קמפיין נקי, אבל עם פוטנציאל ספייק.",
+    addTrigger: "",
+    plannedAddSize: "",
+    localStop: "",
+    addInvalidation: "",
     chartImage: "",
     chartImageName: "",
     journal: [
@@ -203,6 +211,50 @@ function positionValue(row) {
   return shares && entry ? shares * entry : null;
 }
 
+function positionRisk(row) {
+  if ((row.status || "").trim() === "סגור") return null;
+
+  const shares = openShares(row) || num(row.shares);
+  const price = num(row.lastAdd) || num(row.entry);
+  const stop = num(row.stop);
+
+  if (!shares || !price || stop === null) return null;
+
+  const risk = (price - stop) * shares;
+  return risk > 0 ? risk : 0;
+}
+
+function riskPercent(row) {
+  const risk = positionRisk(row);
+  const value = positionValue(row);
+
+  if (risk === null || !value) return null;
+  return (risk / value) * 100;
+}
+
+function totalExposure(rows) {
+  return rows
+    .filter((r) => r.status !== "סגור")
+    .reduce((sum, row) => sum + (positionValue(row) || 0), 0);
+}
+
+function totalPortfolioRisk(rows) {
+  return rows
+    .filter((r) => r.status !== "סגור")
+    .reduce((sum, row) => sum + (positionRisk(row) || 0), 0);
+}
+
+function highestRiskPosition(rows) {
+  const active = rows.filter((r) => r.status !== "סגור");
+  if (!active.length) return null;
+
+  return active.reduce((max, row) => {
+    const risk = positionRisk(row) || 0;
+    const maxRisk = max ? positionRisk(max) || 0 : -1;
+    return risk > maxRisk ? row : max;
+  }, null);
+}
+
 function unrealizedPnl(row) {
   if ((row.status || "").trim() === "סגור") return null;
   const math = getPositionMath(row);
@@ -282,6 +334,7 @@ function getTradeManagement(row) {
   const hasThesis = Boolean(String(row.thesis || "").trim());
   const hasChart = Boolean(row.chartImage);
   const hasJournal = (row.journal || []).length > 0;
+  const hasAddPlan = Boolean(String(row.addTrigger || "").trim()) && Boolean(String(row.localStop || "").trim());
 
   let status = "WAIT";
   let color = "amber";
@@ -334,6 +387,7 @@ function getTradeManagement(row) {
     hasChart ? "גרף שמור" : "אין צילום גרף",
     hasJournal ? "יומן קיים" : "אין פעולות יומן",
     lastAdd ? `הוספה אחרונה: ${lastAdd.price}` : "אין הוספה אחרונה",
+    hasAddPlan ? "Add Plan קיים" : "חסר Add Plan",
   ].join(" | ");
 
   return {
@@ -369,6 +423,7 @@ export default function ClosetDashboard() {
     try {
       const saved =
         localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem("campaign-dashboard-clean-v4-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v3-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v2") ||
         localStorage.getItem("campaign-dashboard-clean");
@@ -525,6 +580,20 @@ export default function ClosetDashboard() {
     return { curve, currentEquity: equity, peakEquity: peak, maxDrawdown };
   }, [rows]);
 
+  const riskStats = useMemo(() => {
+    const exposure = totalExposure(rows);
+    const portfolioRisk = totalPortfolioRisk(rows);
+    const highest = highestRiskPosition(rows);
+
+    return {
+      exposure,
+      portfolioRisk,
+      portfolioRiskPercent: exposure ? (portfolioRisk / exposure) * 100 : null,
+      highestRiskTicker: highest?.ticker || "—",
+      highestRiskValue: highest ? positionRisk(highest) || 0 : 0,
+    };
+  }, [rows]);
+
   function patchRow(id, updater) {
     setRows((prev) => prev.map((row) => (row.id === id ? updater(row) : row)));
   }
@@ -607,6 +676,10 @@ export default function ClosetDashboard() {
         exitPrice: "",
         pattern: "",
         thesis: "",
+        addTrigger: "",
+        plannedAddSize: "",
+        localStop: "",
+        addInvalidation: "",
         chartImage: "",
         chartImageName: "",
         journal: [],
@@ -785,6 +858,10 @@ export default function ClosetDashboard() {
     ["ברייק־איוון", stats.breakeven, "text-zinc-300"],
     ["אחוז הצלחה", percent(stats.winRate), "text-blue-300"],
     ["רווח סגור", money(stats.totalPnl), stats.totalPnl >= 0 ? "text-emerald-300" : "text-red-400"],
+    ["חשיפה פתוחה", money(riskStats.exposure), "text-blue-300"],
+    ["סיכון פתוח", money(riskStats.portfolioRisk), riskStats.portfolioRisk > 500 ? "text-red-400" : "text-amber-300"],
+    ["סיכון %", percent(riskStats.portfolioRiskPercent), "text-amber-300"],
+    ["סיכון גבוה", `${riskStats.highestRiskTicker} ${money(riskStats.highestRiskValue)}`, "text-red-400"],
   ];
 
   return (
@@ -794,7 +871,7 @@ export default function ClosetDashboard() {
         יומן מסחר לקמפיינים: ניהול פוזיציות, Journal, PnL, Equity ו־Trade Management Assistant.
       </p>
 
-      <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-12">
         {cards.map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-right">
             <div className="text-xs text-zinc-500">{label}</div>
@@ -1152,6 +1229,8 @@ export default function ClosetDashboard() {
             <InfoCard label="כמות פתוחה" value={openShares(selected)} color="text-amber-300" />
             <InfoCard label="Avg" value={avgCost(selected) ? Number(avgCost(selected)).toFixed(2) : "—"} color="text-blue-300" />
             <InfoCard label="פוזיציה" value={money(positionValue(selected))} color="text-emerald-300" />
+            <InfoCard label="סיכון $" value={money(positionRisk(selected))} color="text-red-400" />
+            <InfoCard label="סיכון %" value={percent(riskPercent(selected))} color="text-amber-300" />
             <InfoCard
               label="רווח חי"
               value={money(unrealizedPnl(selected))}
@@ -1162,6 +1241,64 @@ export default function ClosetDashboard() {
             <InfoCard label="משך ימים" value={durationDays(selected) ?? "—"} color="text-amber-300" />
             <InfoCard label="תבנית" value={selected.pattern || "—"} color="text-amber-300" />
           </div>
+
+          {selected.status !== "סגור" && (
+            <div className="mb-5 rounded-xl border border-zinc-800 bg-black p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="rounded border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
+                  Risk: {money(positionRisk(selected))} / {percent(riskPercent(selected))}
+                </div>
+
+                <div className="text-right text-sm font-bold text-amber-300">
+                  Add Plan / תוכנית הוספה
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-4">
+                <div>
+                  <div className="mb-1 text-xs text-zinc-500">Trigger / תנאי הוספה</div>
+                  <input
+                    value={selected.addTrigger || ""}
+                    onChange={(e) => updateSelected("addTrigger", e.target.value)}
+                    placeholder="לדוגמה: Higher Low מעל 4.20"
+                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs text-zinc-500">Planned Add Size</div>
+                  <input
+                    value={selected.plannedAddSize || ""}
+                    onChange={(e) => updateSelected("plannedAddSize", e.target.value)}
+                    placeholder="150"
+                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-amber-300"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs text-zinc-500">Local Stop</div>
+                  <input
+                    value={selected.localStop || ""}
+                    onChange={(e) => updateSelected("localStop", e.target.value)}
+                    placeholder="3.95"
+                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-red-400"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-1 text-xs text-zinc-500">Invalidation / ביטול</div>
+                  <input
+                    value={selected.addInvalidation || ""}
+                    onChange={(e) => updateSelected("addInvalidation", e.target.value)}
+                    placeholder="Break below mini base"
+                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className={`mb-5 grid gap-3 ${selected.status === "סגור" ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
             <div className="rounded border border-zinc-800 bg-black p-3">
@@ -1353,6 +1490,39 @@ export default function ClosetDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+          <div className="mb-3 text-right text-sm font-bold text-amber-300">Risk Dashboard / סיכון פתוח</div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <InfoCard label="חשיפה פתוחה" value={money(riskStats.exposure)} color="text-blue-300" />
+            <InfoCard label="סיכון פתוח" value={money(riskStats.portfolioRisk)} color={riskStats.portfolioRisk > 500 ? "text-red-400" : "text-amber-300"} />
+            <InfoCard label="סיכון %" value={percent(riskStats.portfolioRiskPercent)} color="text-amber-300" />
+            <InfoCard label="הכי מסוכן" value={`${riskStats.highestRiskTicker} ${money(riskStats.highestRiskValue)}`} color="text-red-400" />
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            <div className="grid min-w-[720px] grid-cols-[120px_140px_140px_120px_120px_1fr] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
+              <div>טיקר</div>
+              <div>פוזיציה</div>
+              <div>סיכון $</div>
+              <div>סיכון %</div>
+              <div>סטופ</div>
+              <div>Add Plan</div>
+            </div>
+
+            {rows.filter((r) => r.status !== "סגור").map((row) => (
+              <div key={`risk-${row.id}`} className="grid min-w-[720px] grid-cols-[120px_140px_140px_120px_120px_1fr] gap-2 border-b border-zinc-900 py-2 text-sm">
+                <div className="font-bold" dir="ltr">{row.ticker || "—"}</div>
+                <div className="text-blue-300" dir="ltr">{money(positionValue(row))}</div>
+                <div className={(positionRisk(row) || 0) > 0 ? "text-red-400" : "text-zinc-500"} dir="ltr">{money(positionRisk(row))}</div>
+                <div className="text-amber-300" dir="ltr">{percent(riskPercent(row))}</div>
+                <div className="text-red-400" dir="ltr">{row.stop || "—"}</div>
+                <div className="text-zinc-300">{row.addTrigger || "חסר Trigger"}</div>
+              </div>
+            ))}
           </div>
         </div>
 
