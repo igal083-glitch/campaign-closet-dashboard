@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-dashboard-clean-v5-risk-add-plan";
+const STORAGE_KEY = "campaign-dashboard-clean-v6-risk-add-plan-theme";
 
 const actions = [
   "כניסה",
@@ -409,6 +409,25 @@ function colorClasses(color) {
   return "border-zinc-800 bg-zinc-950 text-zinc-400";
 }
 
+function drawerThemeClass(theme) {
+  switch (theme) {
+    case "gray":
+      return "bg-zinc-800 text-white border-zinc-700";
+    case "white":
+      return "bg-white text-black border-zinc-300";
+    case "beige":
+      return "bg-amber-50 text-black border-amber-200";
+    default:
+      return "bg-zinc-950 text-white border-zinc-800";
+  }
+}
+
+function drawerButtonClass(active, activeClass) {
+  return `rounded px-3 py-1 text-xs font-bold transition ${
+    active ? activeClass : "border border-zinc-700 bg-black/20 text-zinc-300 hover:border-amber-500 hover:text-amber-300"
+  }`;
+}
+
 function InfoCard({ label, value, color = "text-white" }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-black p-3 text-right">
@@ -423,6 +442,7 @@ export default function ClosetDashboard() {
     try {
       const saved =
         localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem("campaign-dashboard-clean-v5-risk-add-plan") ||
         localStorage.getItem("campaign-dashboard-clean-v4-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v3-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v2") ||
@@ -440,11 +460,16 @@ export default function ClosetDashboard() {
   const [tickerDrafts, setTickerDrafts] = useState({});
   const [closeModal, setCloseModal] = useState(null);
   const [showEquityHelp, setShowEquityHelp] = useState(false);
+  const [drawerTheme, setDrawerTheme] = useState(() => localStorage.getItem("drawer-theme") || "black");
   const [isLoadingLive, setIsLoadingLive] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
   }, [rows]);
+
+  useEffect(() => {
+    localStorage.setItem("drawer-theme", drawerTheme);
+  }, [drawerTheme]);
 
   const visibleRows = useMemo(() => {
     return rows.filter((r) => (viewMode === "history" ? r.status === "סגור" : r.status !== "סגור"));
@@ -1167,8 +1192,8 @@ export default function ClosetDashboard() {
       )}
 
       {selected && (
-        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-          <div className="mb-5 flex items-center justify-between">
+        <div className={`mt-6 rounded-xl border p-4 ${drawerThemeClass(drawerTheme)}`}>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <button onClick={() => setSelectedId("")} className="rounded border border-zinc-700 px-3 py-2 text-sm text-zinc-400">
               סגור מגירה
             </button>
@@ -1179,6 +1204,38 @@ export default function ClosetDashboard() {
                 {selected.status === "סגור" ? "מגירת היסטוריה" : "מגירה פנימית לניהול עסקה"}
               </div>
             </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-black/10 bg-black/20 p-3">
+            <div className="text-xs font-bold text-amber-300">צבע מגירה:</div>
+
+            <button
+              onClick={() => setDrawerTheme("black")}
+              className={drawerButtonClass(drawerTheme === "black", "border border-white bg-black text-white")}
+            >
+              שחור
+            </button>
+
+            <button
+              onClick={() => setDrawerTheme("gray")}
+              className={drawerButtonClass(drawerTheme === "gray", "bg-zinc-700 text-white")}
+            >
+              אפור
+            </button>
+
+            <button
+              onClick={() => setDrawerTheme("white")}
+              className={drawerButtonClass(drawerTheme === "white", "border border-zinc-400 bg-white text-black")}
+            >
+              לבן
+            </button>
+
+            <button
+              onClick={() => setDrawerTheme("beige")}
+              className={drawerButtonClass(drawerTheme === "beige", "border border-amber-300 bg-amber-100 text-black")}
+            >
+              בז׳
+            </button>
           </div>
 
           {tradeManagement && selected.status !== "סגור" && (
