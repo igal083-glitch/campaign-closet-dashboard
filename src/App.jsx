@@ -437,15 +437,6 @@ function openTradingViewWeb(ticker) {
   window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`, "_blank");
 }
 
-function openTradingViewDesktop(ticker) {
-  const symbol = tradingViewSymbol(ticker).replace(":", "-");
-  if (!symbol) {
-    alert("אין טיקר לפתיחה");
-    return;
-  }
-  window.location.href = `tradingview://symbol/${symbol}`;
-}
-
 function drawerButtonClass(active, activeClass) {
   return `rounded px-3 py-1 text-xs font-bold transition ${
     active ? activeClass : "border border-zinc-700 bg-black/20 text-zinc-300 hover:border-amber-500 hover:text-amber-300"
@@ -929,9 +920,18 @@ export default function ClosetDashboard() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-black p-3 text-right text-xs text-zinc-400">
-            <div className="font-bold text-amber-300">מטרת הדשבורד</div>
-            <div>ניהול עסקאות קיימות והיסטוריה — לא סינון מניות חדשות.</div>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={loadLivePrices}
+              className="rounded-xl border border-emerald-400 bg-emerald-500 px-6 py-3 text-sm font-extrabold text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-400"
+            >
+              {isLoadingLive ? "טוען מחירים..." : "טען מחירים"}
+            </button>
+
+            <div className="rounded-xl border border-zinc-800 bg-black p-3 text-right text-xs text-zinc-400">
+              <div className="font-bold text-amber-300">מטרת הדשבורד</div>
+              <div>ניהול עסקאות קיימות והיסטוריה — לא סינון מניות חדשות.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -987,12 +987,7 @@ export default function ClosetDashboard() {
             שורה חדשה
           </button>
 
-          <button
-            onClick={loadLivePrices}
-            className="rounded border border-emerald-500 px-4 py-2 text-sm font-bold text-emerald-300"
-          >
-            {isLoadingLive ? "טוען..." : "טען מחירים"}
-          </button>
+
         </div>
       </div>
 
@@ -1137,16 +1132,11 @@ export default function ClosetDashboard() {
             <div className="flex gap-2">
               <button
                 onClick={() => openTradingViewWeb(row.ticker)}
-                className="rounded border border-blue-500 px-2 py-1 text-xs font-bold text-blue-300"
+                className="rounded border border-blue-500 px-3 py-1 text-xs font-bold text-blue-300"
               >
                 Web
               </button>
-              <button
-                onClick={() => openTradingViewDesktop(row.ticker)}
-                className="rounded border border-amber-500 px-2 py-1 text-xs font-bold text-amber-300"
-              >
-                App
-              </button>
+
             </div>
           </div>
         ))}
