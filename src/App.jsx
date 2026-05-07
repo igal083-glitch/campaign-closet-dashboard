@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-2-calculation-fix";
+const STORAGE_KEY = "campaign-trading-journal-v1-3-stop-fix";
 
 const actions = [
   "כניסה",
@@ -88,6 +88,15 @@ function num(value) {
   if (typeof value === "string" && value.trim() === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+
+function hasExplicitStop(row) {
+  return row && row.stop !== null && row.stop !== undefined && String(row.stop).trim() !== "";
+}
+
+function displayStop(row) {
+  return hasExplicitStop(row) ? row.stop : "";
 }
 
 function money(value) {
@@ -213,15 +222,16 @@ function positionValue(row) {
 
 function positionRisk(row) {
   if ((row.status || "").trim() === "סגור") return null;
+  if (!hasExplicitStop(row)) return null;
 
   const shares = openShares(row) || num(row.shares);
   const price = num(row.lastAdd) || num(row.entry);
-  const stop = num(row.stop);
+  const stop = hasExplicitStop(row) ? num(row.stop) : null;
 
   if (!shares || !price || stop === null) return null;
 
   const risk = (price - stop) * shares;
-  return risk > 0 ? risk : 0;
+  return risk > 0 ? risk : null;
 }
 
 function riskPercent(row) {
@@ -1346,7 +1356,7 @@ export default function ClosetDashboard() {
 
               <div className="grid gap-3 md:grid-cols-6">
                 <InfoCard label="כניסה" value={selected.entry || "—"} color="text-blue-300" />
-                <InfoCard label="סטופ" value={selected.stop || "—"} color="text-red-400" />
+                <InfoCard label="סטופ" value={displayStop(selected) || "—"} color="text-red-400" />
                 <InfoCard label="מחיר נוכחי" value={selected.lastAdd || "—"} color="text-emerald-400" />
                 <InfoCard label="כמות קנייה" value={totalBoughtQty(selected)} />
                 <InfoCard label="כמות פתוחה" value={openShares(selected)} color="text-amber-300" />
