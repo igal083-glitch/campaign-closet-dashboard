@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-dashboard-clean-v6-risk-add-plan-theme";
+const STORAGE_KEY = "campaign-trading-journal-v1-complete";
 
 const actions = [
   "כניסה",
@@ -422,6 +422,30 @@ function drawerThemeClass(theme) {
   }
 }
 
+function tradingViewSymbol(ticker) {
+  const clean = String(ticker || "").trim().toUpperCase();
+  if (!clean) return "";
+  return clean.includes(":") ? clean : `NASDAQ:${clean}`;
+}
+
+function openTradingViewWeb(ticker) {
+  const symbol = tradingViewSymbol(ticker);
+  if (!symbol) {
+    alert("אין טיקר לפתיחה");
+    return;
+  }
+  window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`, "_blank");
+}
+
+function openTradingViewDesktop(ticker) {
+  const symbol = tradingViewSymbol(ticker).replace(":", "-");
+  if (!symbol) {
+    alert("אין טיקר לפתיחה");
+    return;
+  }
+  window.location.href = `tradingview://symbol/${symbol}`;
+}
+
 function drawerButtonClass(active, activeClass) {
   return `rounded px-3 py-1 text-xs font-bold transition ${
     active ? activeClass : "border border-zinc-700 bg-black/20 text-zinc-300 hover:border-amber-500 hover:text-amber-300"
@@ -443,6 +467,7 @@ export default function ClosetDashboard() {
       const saved =
         localStorage.getItem(STORAGE_KEY) ||
         localStorage.getItem("campaign-dashboard-clean-v5-risk-add-plan") ||
+        localStorage.getItem("campaign-dashboard-clean-v7-drawer-tabs") ||
         localStorage.getItem("campaign-dashboard-clean-v4-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v3-trade-management") ||
         localStorage.getItem("campaign-dashboard-clean-v2") ||
@@ -462,6 +487,7 @@ export default function ClosetDashboard() {
   const [showEquityHelp, setShowEquityHelp] = useState(false);
   const [drawerTheme, setDrawerTheme] = useState(() => localStorage.getItem("drawer-theme") || "black");
   const [isLoadingLive, setIsLoadingLive] = useState(false);
+  const [drawerTab, setDrawerTab] = useState("overview");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
@@ -891,10 +917,24 @@ export default function ClosetDashboard() {
 
   return (
     <div className="min-h-screen bg-black p-6 text-white" dir="rtl">
-      <h1 className="mb-2 text-4xl font-extrabold">ארון קמפיינים</h1>
-      <p className="mb-6 text-zinc-500">
-        יומן מסחר לקמפיינים: ניהול פוזיציות, Journal, PnL, Equity ו־Trade Management Assistant.
-      </p>
+      <div className="mb-6 rounded-2xl border border-amber-500/40 bg-zinc-950 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="text-right">
+            <div className="mb-2 inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-300">
+              V1 COMPLETE · TRADING JOURNAL · לא Watchlist
+            </div>
+            <h1 className="text-4xl font-extrabold">Campaign Trading Journal</h1>
+            <p className="mt-1 text-sm text-zinc-400">
+              יומן מסחר לקמפיינים: עסקאות פתוחות וסגורות, PnL, Risk, Add Plan, Journal ו־TradingView.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black p-3 text-right text-xs text-zinc-400">
+            <div className="font-bold text-amber-300">מטרת הדשבורד</div>
+            <div>ניהול עסקאות קיימות והיסטוריה — לא סינון מניות חדשות.</div>
+          </div>
+        </div>
+      </div>
 
       <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-12">
         {cards.map(([label, value, color]) => (
@@ -957,7 +997,7 @@ export default function ClosetDashboard() {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800">
-        <div className="grid min-w-[1280px] grid-cols-[110px_110px_110px_100px_120px_120px_120px_130px_110px_100px_100px_90px] gap-4 bg-zinc-900 p-3 text-sm font-bold text-zinc-300">
+        <div className="grid min-w-[1450px] grid-cols-[105px_105px_105px_95px_115px_115px_115px_125px_100px_95px_95px_90px_150px] gap-4 bg-zinc-900 p-3 text-sm font-bold text-zinc-300">
           <div>תאריך</div>
           <div>טיקר</div>
           <div>כמות קנייה</div>
@@ -969,13 +1009,14 @@ export default function ClosetDashboard() {
           <div>מצב</div>
           <div>יציאה</div>
           <div>P/L</div>
-          <div></div>
+          <div>פתח</div>
+          <div>TradingView</div>
         </div>
 
         {visibleRows.map((row, index) => (
           <div
             key={row.id}
-            className="grid min-w-[1280px] grid-cols-[110px_110px_110px_100px_120px_120px_120px_130px_110px_100px_100px_90px] items-center gap-4 border-t border-zinc-800 p-3"
+            className="grid min-w-[1450px] grid-cols-[105px_105px_105px_95px_115px_115px_115px_125px_100px_95px_95px_90px_150px] items-center gap-4 border-t border-zinc-800 p-3"
           >
             <input
               value={row.date}
@@ -1079,11 +1120,32 @@ export default function ClosetDashboard() {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setSelectedId(row.id)} className="rounded bg-amber-500 px-3 py-1 text-sm font-bold text-black">
+              <button
+                onClick={() => {
+                  setSelectedId(row.id);
+                  setDrawerTab("overview");
+                }}
+                className="rounded bg-amber-500 px-3 py-1 text-sm font-bold text-black"
+              >
                 פתח
               </button>
               <button onClick={() => openCloseModal(index)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
                 ×
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => openTradingViewWeb(row.ticker)}
+                className="rounded border border-blue-500 px-2 py-1 text-xs font-bold text-blue-300"
+              >
+                Web
+              </button>
+              <button
+                onClick={() => openTradingViewDesktop(row.ticker)}
+                className="rounded border border-amber-500 px-2 py-1 text-xs font-bold text-amber-300"
+              >
+                App
               </button>
             </div>
           </div>
@@ -1193,7 +1255,7 @@ export default function ClosetDashboard() {
 
       {selected && (
         <div className={`mt-6 rounded-xl border p-4 ${drawerThemeClass(drawerTheme)}`}>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <button onClick={() => setSelectedId("")} className="rounded border border-zinc-700 px-3 py-2 text-sm text-zinc-400">
               סגור מגירה
             </button>
@@ -1206,283 +1268,361 @@ export default function ClosetDashboard() {
             </div>
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-black/10 bg-black/20 p-3">
-            <div className="text-xs font-bold text-amber-300">צבע מגירה:</div>
-
-            <button
-              onClick={() => setDrawerTheme("black")}
-              className={drawerButtonClass(drawerTheme === "black", "border border-white bg-black text-white")}
-            >
-              שחור
-            </button>
-
-            <button
-              onClick={() => setDrawerTheme("gray")}
-              className={drawerButtonClass(drawerTheme === "gray", "bg-zinc-700 text-white")}
-            >
-              אפור
-            </button>
-
-            <button
-              onClick={() => setDrawerTheme("white")}
-              className={drawerButtonClass(drawerTheme === "white", "border border-zinc-400 bg-white text-black")}
-            >
-              לבן
-            </button>
-
-            <button
-              onClick={() => setDrawerTheme("beige")}
-              className={drawerButtonClass(drawerTheme === "beige", "border border-amber-300 bg-amber-100 text-black")}
-            >
-              בז׳
-            </button>
-          </div>
-
-          {tradeManagement && selected.status !== "סגור" && (
-            <div className={`mb-5 rounded-xl border p-4 ${colorClasses(tradeManagement.color)}`}>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <div className="rounded bg-black/40 px-3 py-1 text-sm font-extrabold" dir="ltr">
-                  {tradeManagement.status}
-                </div>
-                <div className="text-right text-lg font-extrabold">Trade Management Assistant</div>
-              </div>
-
-              <div className="mb-3 text-right text-sm font-bold text-white">{tradeManagement.title}</div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
-                  <div className="mb-1 text-xs font-bold text-zinc-400">Add Decision / החלטת הוספה</div>
-                  <div className="text-sm font-bold">{tradeManagement.addDecision}</div>
-                </div>
-
-                <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
-                  <div className="mb-1 text-xs font-bold text-zinc-400">Structure / מבנה</div>
-                  <div className="text-sm">{tradeManagement.structure}</div>
-                </div>
-
-                <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
-                  <div className="mb-1 text-xs font-bold text-zinc-400">Risk / סיכון</div>
-                  <div className="text-sm">{tradeManagement.risk}</div>
-                </div>
-
-                <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
-                  <div className="mb-1 text-xs font-bold text-zinc-400">Management / ניהול</div>
-                  <div className="text-sm">{tradeManagement.management}</div>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded border border-black/30 bg-black/30 p-3 text-right text-xs text-zinc-300">
-                <span className="font-bold text-amber-300">Journal Quality: </span>
-                {tradeManagement.journalQuality}
-              </div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-black/10 bg-black/20 p-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["overview", "Overview"],
+                ["ai", "AI Review"],
+                ["add", "Add Plan"],
+                ["journal", "Journal"],
+                ["chart", "Chart"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setDrawerTab(key)}
+                  className={`rounded px-3 py-2 text-xs font-bold ${
+                    drawerTab === key
+                      ? "bg-amber-500 text-black"
+                      : "border border-zinc-700 bg-black/20 text-zinc-300 hover:border-amber-500 hover:text-amber-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
 
-          <div className="mb-5 grid gap-3 md:grid-cols-6">
-            <InfoCard label="כניסה" value={selected.entry || "—"} color="text-blue-300" />
-            <InfoCard label="סטופ" value={selected.stop || "—"} color="text-red-400" />
-            <InfoCard label="מחיר נוכחי" value={selected.lastAdd || "—"} color="text-emerald-400" />
-            <InfoCard label="כמות קנייה" value={totalBoughtQty(selected)} />
-            <InfoCard label="כמות פתוחה" value={openShares(selected)} color="text-amber-300" />
-            <InfoCard label="Avg" value={avgCost(selected) ? Number(avgCost(selected)).toFixed(2) : "—"} color="text-blue-300" />
-            <InfoCard label="פוזיציה" value={money(positionValue(selected))} color="text-emerald-300" />
-            <InfoCard label="סיכון $" value={money(positionRisk(selected))} color="text-red-400" />
-            <InfoCard label="סיכון %" value={percent(riskPercent(selected))} color="text-amber-300" />
-            <InfoCard
-              label="רווח חי"
-              value={money(unrealizedPnl(selected))}
-              color={(unrealizedPnl(selected) || 0) >= 0 ? "text-emerald-300" : "text-red-400"}
-            />
-            <InfoCard label="מצב" value={selected.status} color={selected.status === "סגור" ? "text-red-400" : "text-emerald-300"} />
-            <InfoCard label="מס׳ הוספות" value={getAddCount(selected)} color="text-amber-300" />
-            <InfoCard label="משך ימים" value={durationDays(selected) ?? "—"} color="text-amber-300" />
-            <InfoCard label="תבנית" value={selected.pattern || "—"} color="text-amber-300" />
-          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xs font-bold text-amber-300">צבע:</div>
 
-          {selected.status !== "סגור" && (
-            <div className="mb-5 rounded-xl border border-zinc-800 bg-black p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="rounded border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
-                  Risk: {money(positionRisk(selected))} / {percent(riskPercent(selected))}
-                </div>
-
-                <div className="text-right text-sm font-bold text-amber-300">
-                  Add Plan / תוכנית הוספה
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-4">
-                <div>
-                  <div className="mb-1 text-xs text-zinc-500">Trigger / תנאי הוספה</div>
-                  <input
-                    value={selected.addTrigger || ""}
-                    onChange={(e) => updateSelected("addTrigger", e.target.value)}
-                    placeholder="לדוגמה: Higher Low מעל 4.20"
-                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 text-xs text-zinc-500">Planned Add Size</div>
-                  <input
-                    value={selected.plannedAddSize || ""}
-                    onChange={(e) => updateSelected("plannedAddSize", e.target.value)}
-                    placeholder="150"
-                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-amber-300"
-                    dir="ltr"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 text-xs text-zinc-500">Local Stop</div>
-                  <input
-                    value={selected.localStop || ""}
-                    onChange={(e) => updateSelected("localStop", e.target.value)}
-                    placeholder="3.95"
-                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-red-400"
-                    dir="ltr"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 text-xs text-zinc-500">Invalidation / ביטול</div>
-                  <input
-                    value={selected.addInvalidation || ""}
-                    onChange={(e) => updateSelected("addInvalidation", e.target.value)}
-                    placeholder="Break below mini base"
-                    className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className={`mb-5 grid gap-3 ${selected.status === "סגור" ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
-            <div className="rounded border border-zinc-800 bg-black p-3">
-              <div className="mb-3 text-right text-sm font-bold text-amber-300">תבנית מסחר</div>
-
-              <select
-                value={selected.pattern || ""}
-                onChange={(e) => updateSelected("pattern", e.target.value)}
-                className="mb-4 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-amber-300"
+              <button
+                onClick={() => setDrawerTheme("black")}
+                className={drawerButtonClass(drawerTheme === "black", "border border-white bg-black text-white")}
               >
-                <option value="">בחר תבנית</option>
-                {tradePatterns.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+                שחור
+              </button>
 
-              <div className="mb-2 text-right text-sm font-bold text-amber-300">תזה</div>
+              <button
+                onClick={() => setDrawerTheme("gray")}
+                className={drawerButtonClass(drawerTheme === "gray", "bg-zinc-700 text-white")}
+              >
+                אפור
+              </button>
 
-              <textarea
-                value={selected.thesis || ""}
-                onChange={(e) => updateSelected("thesis", e.target.value)}
-                className="h-24 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm"
-              />
+              <button
+                onClick={() => setDrawerTheme("white")}
+                className={drawerButtonClass(drawerTheme === "white", "border border-zinc-400 bg-white text-black")}
+              >
+                לבן
+              </button>
 
-              {selected.status !== "סגור" && (
-                <div className="mt-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-                  <div className="mb-2 text-right text-xs font-bold text-zinc-400">קובץ גרף / צילום מסך</div>
+              <button
+                onClick={() => setDrawerTheme("beige")}
+                className={drawerButtonClass(drawerTheme === "beige", "border border-amber-300 bg-amber-100 text-black")}
+              >
+                בז׳
+              </button>
+            </div>
+          </div>
 
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => uploadChart(e.target.files?.[0])}
-                    className="w-full rounded border border-zinc-800 bg-black p-2 text-sm text-zinc-300"
-                  />
+          {drawerTab === "overview" && (
+            <div className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-6">
+                <InfoCard label="כניסה" value={selected.entry || "—"} color="text-blue-300" />
+                <InfoCard label="סטופ" value={selected.stop || "—"} color="text-red-400" />
+                <InfoCard label="מחיר נוכחי" value={selected.lastAdd || "—"} color="text-emerald-400" />
+                <InfoCard label="כמות קנייה" value={totalBoughtQty(selected)} />
+                <InfoCard label="כמות פתוחה" value={openShares(selected)} color="text-amber-300" />
+                <InfoCard label="Avg" value={avgCost(selected) ? Number(avgCost(selected)).toFixed(2) : "—"} color="text-blue-300" />
+                <InfoCard label="פוזיציה" value={money(positionValue(selected))} color="text-emerald-300" />
+                <InfoCard label="סיכון $" value={money(positionRisk(selected))} color="text-red-400" />
+                <InfoCard label="סיכון %" value={percent(riskPercent(selected))} color="text-amber-300" />
+                <InfoCard
+                  label="רווח חי"
+                  value={money(unrealizedPnl(selected))}
+                  color={(unrealizedPnl(selected) || 0) >= 0 ? "text-emerald-300" : "text-red-400"}
+                />
+                <InfoCard label="מצב" value={selected.status} color={selected.status === "סגור" ? "text-red-400" : "text-emerald-300"} />
+                <InfoCard label="מס׳ הוספות" value={getAddCount(selected)} color="text-amber-300" />
+                <InfoCard label="משך ימים" value={durationDays(selected) ?? "—"} color="text-amber-300" />
+                <InfoCard label="תבנית" value={selected.pattern || "—"} color="text-amber-300" />
+              </div>
 
-                  {selected.chartImageName && (
-                    <div className="mt-2 text-right text-xs text-emerald-400">
-                      נשמר: {selected.chartImageName}
+              <div className="rounded-xl border border-zinc-800 bg-black p-4 text-right">
+                <div className="mb-3 text-sm font-bold text-amber-300">תקציר ניהול</div>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-xs text-zinc-500">Add Status</div>
+                    <div className="mt-1 font-bold text-amber-300" dir="ltr">{tradeManagement?.status || "—"}</div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-xs text-zinc-500">Add Trigger</div>
+                    <div className="mt-1 text-sm text-zinc-300">{selected.addTrigger || "לא הוגדר"}</div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-xs text-zinc-500">Local Stop</div>
+                    <div className="mt-1 font-bold text-red-400" dir="ltr">{selected.localStop || "—"}</div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-xs text-zinc-500">Invalidation</div>
+                    <div className="mt-1 text-sm text-zinc-300">{selected.addInvalidation || "לא הוגדר"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {drawerTab === "ai" && (
+            <div className="space-y-5">
+              {tradeManagement && selected.status !== "סגור" ? (
+                <div className={`rounded-xl border p-4 ${colorClasses(tradeManagement.color)}`}>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="rounded bg-black/40 px-3 py-1 text-sm font-extrabold" dir="ltr">
+                      {tradeManagement.status}
                     </div>
-                  )}
+                    <div className="text-right text-lg font-extrabold">Trade Management Assistant</div>
+                  </div>
+
+                  <div className="mb-3 text-right text-sm font-bold text-white">{tradeManagement.title}</div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
+                      <div className="mb-1 text-xs font-bold text-zinc-400">Add Decision / החלטת הוספה</div>
+                      <div className="text-sm font-bold">{tradeManagement.addDecision}</div>
+                    </div>
+
+                    <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
+                      <div className="mb-1 text-xs font-bold text-zinc-400">Structure / מבנה</div>
+                      <div className="text-sm">{tradeManagement.structure}</div>
+                    </div>
+
+                    <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
+                      <div className="mb-1 text-xs font-bold text-zinc-400">Risk / סיכון</div>
+                      <div className="text-sm">{tradeManagement.risk}</div>
+                    </div>
+
+                    <div className="rounded border border-black/30 bg-black/30 p-3 text-right">
+                      <div className="mb-1 text-xs font-bold text-zinc-400">Management / ניהול</div>
+                      <div className="text-sm">{tradeManagement.management}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded border border-black/30 bg-black/30 p-3 text-right text-xs text-zinc-300">
+                    <span className="font-bold text-amber-300">Journal Quality: </span>
+                    {tradeManagement.journalQuality}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-zinc-800 bg-black p-4 text-right text-sm text-zinc-400">
+                  AI Review פעיל רק בעסקאות פתוחות.
                 </div>
               )}
             </div>
+          )}
 
-            {selected.status !== "סגור" && selected.chartImage && (
-              <div className="rounded border border-zinc-800 bg-black p-3">
-                <div className="mb-2 text-right text-sm font-bold text-amber-300">גרף שמור</div>
-                <img src={selected.chartImage} alt="chart" className="max-h-[380px] w-full rounded object-contain" />
-              </div>
-            )}
-          </div>
+          {drawerTab === "add" && (
+            <div className="space-y-5">
+              {selected.status !== "סגור" ? (
+                <div className="rounded-xl border border-zinc-800 bg-black p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="rounded border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
+                      Risk: {money(positionRisk(selected))} / {percent(riskPercent(selected))}
+                    </div>
 
-          <div className="rounded border border-zinc-800 bg-black p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <button onClick={addJournalLine} className="rounded bg-emerald-600 px-3 py-2 text-sm font-bold">
-                פעולה +
-              </button>
-              <div className="text-sm font-bold text-amber-300">יומן פעולות</div>
-            </div>
+                    <div className="text-right text-sm font-bold text-amber-300">
+                      Add Plan / תוכנית הוספה
+                    </div>
+                  </div>
 
-            <div className="overflow-x-auto">
-              <div className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
-                <div>תאריך</div>
-                <div>פעולה</div>
-                <div>כמות</div>
-                <div>מחיר</div>
-                <div>סטופ</div>
-                <div>הערה</div>
-                <div></div>
-              </div>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div>
+                      <div className="mb-1 text-xs text-zinc-500">Trigger / תנאי הוספה</div>
+                      <input
+                        value={selected.addTrigger || ""}
+                        onChange={(e) => updateSelected("addTrigger", e.target.value)}
+                        placeholder="לדוגמה: Higher Low מעל 4.20"
+                        className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-white"
+                      />
+                    </div>
 
-              {(selected.journal || []).map((line, i) => (
-                <div
-                  key={i}
-                  className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] items-center gap-2 border-b border-zinc-900 py-2"
-                >
-                  <input
-                    value={line.date}
-                    onChange={(e) => updateJournal(i, "date", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center"
-                    dir="ltr"
-                  />
+                    <div>
+                      <div className="mb-1 text-xs text-zinc-500">Planned Add Size</div>
+                      <input
+                        value={selected.plannedAddSize || ""}
+                        onChange={(e) => updateSelected("plannedAddSize", e.target.value)}
+                        placeholder="150"
+                        className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-amber-300"
+                        dir="ltr"
+                      />
+                    </div>
 
-                  <select
-                    value={line.action}
-                    onChange={(e) => updateJournal(i, "action", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
-                  >
-                    {actions.map((a) => (
-                      <option key={a}>{a}</option>
-                    ))}
-                  </select>
+                    <div>
+                      <div className="mb-1 text-xs text-zinc-500">Local Stop</div>
+                      <input
+                        value={selected.localStop || ""}
+                        onChange={(e) => updateSelected("localStop", e.target.value)}
+                        placeholder="3.95"
+                        className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center text-sm text-red-400"
+                        dir="ltr"
+                      />
+                    </div>
 
-                  <input
-                    value={line.qty || ""}
-                    onChange={(e) => updateJournal(i, "qty", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-amber-300"
-                    dir="ltr"
-                  />
+                    <div>
+                      <div className="mb-1 text-xs text-zinc-500">Invalidation / ביטול</div>
+                      <input
+                        value={selected.addInvalidation || ""}
+                        onChange={(e) => updateSelected("addInvalidation", e.target.value)}
+                        placeholder="Break below mini base"
+                        className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-white"
+                      />
+                    </div>
+                  </div>
 
-                  <input
-                    value={line.price || ""}
-                    onChange={(e) => updateJournal(i, "price", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center"
-                    dir="ltr"
-                  />
-
-                  <input
-                    value={line.stop || ""}
-                    onChange={(e) => updateJournal(i, "stop", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-red-400"
-                    dir="ltr"
-                  />
-
-                  <input
-                    value={line.note || ""}
-                    onChange={(e) => updateJournal(i, "note", e.target.value)}
-                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1"
-                  />
-
-                  <button onClick={() => deleteJournal(i)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
-                    ×
-                  </button>
+                  <div className="mt-4 rounded border border-zinc-800 bg-zinc-950 p-3 text-right text-xs text-zinc-400">
+                    המטרה: להחליט מראש איפה מוסיפים, כמה מוסיפים, ומה מבטל את ההוספה — לפני שהרגש נכנס לתמונה.
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div className="rounded-xl border border-zinc-800 bg-black p-4 text-right text-sm text-zinc-400">
+                  Add Plan לא רלוונטי לעסקה סגורה.
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {drawerTab === "chart" && (
+            <div className={`grid gap-3 ${selected.status === "סגור" ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
+              <div className="rounded border border-zinc-800 bg-black p-3">
+                <div className="mb-3 text-right text-sm font-bold text-amber-300">תבנית מסחר + תזה</div>
+
+                <select
+                  value={selected.pattern || ""}
+                  onChange={(e) => updateSelected("pattern", e.target.value)}
+                  className="mb-4 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-amber-300"
+                >
+                  <option value="">בחר תבנית</option>
+                  {tradePatterns.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+
+                <div className="mb-2 text-right text-sm font-bold text-amber-300">תזה</div>
+
+                <textarea
+                  value={selected.thesis || ""}
+                  onChange={(e) => updateSelected("thesis", e.target.value)}
+                  className="h-28 w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-right text-sm text-white"
+                />
+
+                {selected.status !== "סגור" && (
+                  <div className="mt-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="mb-2 text-right text-xs font-bold text-zinc-400">קובץ גרף / צילום מסך</div>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => uploadChart(e.target.files?.[0])}
+                      className="w-full rounded border border-zinc-800 bg-black p-2 text-sm text-zinc-300"
+                    />
+
+                    {selected.chartImageName && (
+                      <div className="mt-2 text-right text-xs text-emerald-400">
+                        נשמר: {selected.chartImageName}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {selected.chartImage ? (
+                <div className="rounded border border-zinc-800 bg-black p-3">
+                  <div className="mb-2 text-right text-sm font-bold text-amber-300">גרף שמור</div>
+                  <img src={selected.chartImage} alt="chart" className="max-h-[420px] w-full rounded object-contain" />
+                </div>
+              ) : (
+                <div className="rounded border border-zinc-800 bg-black p-3 text-right text-sm text-zinc-500">
+                  עדיין אין גרף שמור לעסקה הזאת.
+                </div>
+              )}
+            </div>
+          )}
+
+          {drawerTab === "journal" && (
+            <div className="rounded border border-zinc-800 bg-black p-3">
+              <div className="mb-3 flex items-center justify-between">
+                <button onClick={addJournalLine} className="rounded bg-emerald-600 px-3 py-2 text-sm font-bold">
+                  פעולה +
+                </button>
+                <div className="text-sm font-bold text-amber-300">יומן פעולות</div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <div className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
+                  <div>תאריך</div>
+                  <div>פעולה</div>
+                  <div>כמות</div>
+                  <div>מחיר</div>
+                  <div>סטופ</div>
+                  <div>הערה</div>
+                  <div></div>
+                </div>
+
+                {(selected.journal || []).map((line, i) => (
+                  <div
+                    key={i}
+                    className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] items-center gap-2 border-b border-zinc-900 py-2"
+                  >
+                    <input
+                      value={line.date}
+                      onChange={(e) => updateJournal(i, "date", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-white"
+                      dir="ltr"
+                    />
+
+                    <select
+                      value={line.action}
+                      onChange={(e) => updateJournal(i, "action", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-white"
+                    >
+                      {actions.map((a) => (
+                        <option key={a}>{a}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      value={line.qty || ""}
+                      onChange={(e) => updateJournal(i, "qty", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-amber-300"
+                      dir="ltr"
+                    />
+
+                    <input
+                      value={line.price || ""}
+                      onChange={(e) => updateJournal(i, "price", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-white"
+                      dir="ltr"
+                    />
+
+                    <input
+                      value={line.stop || ""}
+                      onChange={(e) => updateJournal(i, "stop", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-red-400"
+                      dir="ltr"
+                    />
+
+                    <input
+                      value={line.note || ""}
+                      onChange={(e) => updateJournal(i, "note", e.target.value)}
+                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-white"
+                    />
+
+                    <button onClick={() => deleteJournal(i)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
