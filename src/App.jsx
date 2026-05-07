@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-complete";
+const STORAGE_KEY = "campaign-trading-journal-v1-2-calculation-fix";
 
 const actions = [
   "כניסה",
@@ -820,8 +820,6 @@ export default function ClosetDashboard() {
       return {
         ...old,
         journal,
-        shares: String(math.buyQty || num(old.shares) || 0),
-        lastAdd: lastBuyPrice(journal, old.lastAdd),
         status: exit ? "סגור" : old.status,
         closedDate: exit ? old.closedDate || exit.date || today() : old.closedDate,
         exitPrice: exit ? exit.price : old.exitPrice,
@@ -912,7 +910,7 @@ export default function ClosetDashboard() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="text-right">
             <div className="mb-2 inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-300">
-              V1 COMPLETE · TRADING JOURNAL · לא Watchlist
+              V1.2 · CALCULATION FIX · TRADING JOURNAL
             </div>
             <h1 className="text-4xl font-extrabold">Campaign Trading Journal</h1>
             <p className="mt-1 text-sm text-zinc-400">
@@ -995,8 +993,8 @@ export default function ClosetDashboard() {
         <div className="grid min-w-[1450px] grid-cols-[105px_105px_105px_95px_115px_115px_115px_125px_100px_95px_95px_90px_150px] gap-4 bg-zinc-900 p-3 text-sm font-bold text-zinc-300">
           <div>תאריך</div>
           <div>טיקר</div>
-          <div>כמות קנייה</div>
-          <div>כניסה</div>
+          <div>כמות פתוחה</div>
+          <div>Avg</div>
           <div>סטופ</div>
           <div>פוזיציה</div>
           <div>רווח חי</div>
@@ -1033,26 +1031,17 @@ export default function ClosetDashboard() {
               dir="ltr"
             />
 
-            <input
-              value={row.shares}
-              onChange={(e) => updateVisibleRow(index, "shares", e.target.value)}
-              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center font-bold"
-              dir="ltr"
-            />
+            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-amber-300" dir="ltr">
+              {openShares(row) || "—"}
+            </div>
 
-            <input
-              value={row.entry}
-              onChange={(e) => updateVisibleRow(index, "entry", e.target.value)}
-              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-blue-300"
-              dir="ltr"
-            />
+            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-blue-300" dir="ltr">
+              {avgCost(row) ? Number(avgCost(row)).toFixed(2) : row.entry || "—"}
+            </div>
 
-            <input
-              value={row.stop}
-              onChange={(e) => updateVisibleRow(index, "stop", e.target.value)}
-              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-red-400"
-              dir="ltr"
-            />
+            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-red-400" dir="ltr">
+              {row.stop || "—"}
+            </div>
 
             <div
               className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-center font-bold text-emerald-300"
@@ -1074,12 +1063,9 @@ export default function ClosetDashboard() {
               {money(unrealizedPnl(row))}
             </div>
 
-            <input
-              value={row.lastAdd || ""}
-              onChange={(e) => updateVisibleRow(index, "lastAdd", e.target.value)}
-              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-emerald-400"
-              dir="ltr"
-            />
+            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-emerald-400" dir="ltr">
+              {row.lastAdd || "—"}
+            </div>
 
             <select
               value={row.status}
@@ -1094,12 +1080,9 @@ export default function ClosetDashboard() {
               <option>סגור</option>
             </select>
 
-            <input
-              value={row.exitPrice || ""}
-              onChange={(e) => updateVisibleRow(index, "exitPrice", e.target.value)}
-              className="rounded border border-zinc-800 bg-black px-2 py-1 text-center text-amber-300"
-              dir="ltr"
-            />
+            <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-amber-300" dir="ltr">
+              {row.exitPrice || "—"}
+            </div>
 
             <div
               className={`rounded border px-2 py-1 text-center font-bold ${
@@ -1316,6 +1299,51 @@ export default function ClosetDashboard() {
 
           {drawerTab === "overview" && (
             <div className="space-y-5">
+              <div className="rounded-xl border border-zinc-800 bg-black p-4 text-right">
+                <div className="mb-3 text-sm font-bold text-amber-300">Position Setup / עדכון דרך המגירה בלבד</div>
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div>
+                    <div className="mb-1 text-xs text-zinc-500">כמות בסיס / Shares</div>
+                    <input
+                      value={selected.shares || ""}
+                      onChange={(e) => updateSelected("shares", e.target.value)}
+                      className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-amber-300"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs text-zinc-500">כניסה בסיסית / Entry</div>
+                    <input
+                      value={selected.entry || ""}
+                      onChange={(e) => updateSelected("entry", e.target.value)}
+                      className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-blue-300"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs text-zinc-500">סטופ כולל / Stop</div>
+                    <input
+                      value={selected.stop || ""}
+                      onChange={(e) => updateSelected("stop", e.target.value)}
+                      className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-red-400"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs text-zinc-500">מחיר נוכחי / Current</div>
+                    <input
+                      value={selected.lastAdd || ""}
+                      onChange={(e) => updateSelected("lastAdd", e.target.value)}
+                      className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-emerald-400"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  הערה: הטבלה הראשית היא תצוגה בלבד. כמות, כניסה, סטופ ומחיר מתעדכנים מהמגירה/יומן.
+                </div>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-6">
                 <InfoCard label="כניסה" value={selected.entry || "—"} color="text-blue-300" />
                 <InfoCard label="סטופ" value={selected.stop || "—"} color="text-red-400" />
@@ -1538,6 +1566,10 @@ export default function ClosetDashboard() {
 
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
+              <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
+                כלל חישוב: Qty = מספר מניות בלבד, Price = מחיר למניה. הפוזיציה מחושבת כ־Open Shares × Current Price.
+              </div>
+
               <div className="mb-3 flex items-center justify-between">
                 <button onClick={addJournalLine} className="rounded bg-emerald-600 px-3 py-2 text-sm font-bold">
                   פעולה +
