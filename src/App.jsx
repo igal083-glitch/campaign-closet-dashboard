@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-stable";
+const STORAGE_KEY = "campaign-trading-journal-v1-6-stop-sync";
 
 const actions = [
   "כניסה",
@@ -832,6 +832,7 @@ export default function ClosetDashboard() {
       return {
         ...old,
         journal,
+        stop: field === "stop" ? value : old.stop,
         status: exit ? "סגור" : old.status,
         closedDate: exit ? old.closedDate || exit.date || today() : old.closedDate,
         exitPrice: exit ? exit.price : old.exitPrice,
@@ -1007,7 +1008,7 @@ export default function ClosetDashboard() {
           <div>טיקר</div>
           <div>כמות פתוחה</div>
           <div>Avg</div>
-          <div>Stop Price</div>
+          <div>Global Stop</div>
           <div>פוזיציה</div>
           <div>רווח חי</div>
           <div>מחיר נוכחי</div>
@@ -1595,7 +1596,7 @@ export default function ClosetDashboard() {
                   <div>פעולה</div>
                   <div>כמות</div>
                   <div>מחיר</div>
-                  <div>Stop Price</div>
+                  <div>Global Stop</div>
                   <div>הערה</div>
                   <div></div>
                 </div>
@@ -1641,7 +1642,7 @@ export default function ClosetDashboard() {
                       onChange={(e) => updateJournal(i, "stop", e.target.value)}
                       className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-red-400"
                       dir="ltr"
-                     placeholder="לדוגמה: 3.85" />
+                     placeholder="סטופ כולל לדוגמה: 3.85" />
 
                     <input
                       value={line.note || ""}
@@ -1740,7 +1741,7 @@ export default function ClosetDashboard() {
               <div>פוזיציה</div>
               <div>סיכון $</div>
               <div>סיכון %</div>
-              <div>Stop Price</div>
+              <div>Global Stop</div>
               <div>Add Plan</div>
             </div>
 
