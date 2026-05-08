@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-8-real-qty-fix";
+const STORAGE_KEY = "campaign-trading-journal-v1-9-journal-validation";
 
 const actions = [
   "כניסה",
@@ -90,6 +90,26 @@ function num(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+
+
+function isQtyRequired(action) {
+  return action === "כניסה" || action === "הוספה" || action === "יציאה חלקית" || action === "סטופ הוספה";
+}
+
+function isPriceRequired(action) {
+  return action === "כניסה" || action === "הוספה" || action === "יציאה חלקית" || action === "יציאה מלאה" || action === "סטופ הוספה";
+}
+
+function journalLineError(line) {
+  const action = line?.action || "";
+  const qty = num(line?.qty);
+  const price = num(line?.price);
+
+  if (isQtyRequired(action) && !qty) return "חסר Qty — השורה לא מחושבת";
+  if (isPriceRequired(action) && !price) return "חסר Price — השורה לא מחושבת";
+
+  return "";
+}
 
 function hasExplicitStop(row) {
   return row && row.stop !== null && row.stop !== undefined && String(row.stop).trim() !== "";
@@ -1683,7 +1703,7 @@ export default function ClosetDashboard() {
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
-                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות אבל לא משנים את ה־Global Stop.
+                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות אבל לא משנים את ה־Global Stop. שורה בלי Price לא מחושבת.
               </div>
 
               <div className="mb-3 flex items-center justify-between">
@@ -1729,7 +1749,7 @@ export default function ClosetDashboard() {
                     <input
                       value={line.qty || ""}
                       onChange={(e) => updateJournal(i, "qty", e.target.value)}
-                      placeholder="מניות (+/-)"
+                      placeholder="Qty מניות"
                       className={`rounded border px-2 py-1 text-center text-amber-300 ${
                         (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "סטופ הוספה") && !num(line.qty)
                           ? "border-red-500 bg-red-500/10"
@@ -1741,7 +1761,7 @@ export default function ClosetDashboard() {
                     <input
                       value={line.price || ""}
                       onChange={(e) => updateJournal(i, "price", e.target.value)}
-                      placeholder="מחיר למניה"
+                      placeholder="Price למניה"
                       className={`rounded border px-2 py-1 text-center text-white ${
                         (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "יציאה מלאה" || line.action === "סטופ הוספה") && !num(line.price)
                           ? "border-red-500 bg-red-500/10"
@@ -1757,11 +1777,18 @@ export default function ClosetDashboard() {
                       dir="ltr"
                      placeholder="סטופ כולל לדוגמה: 3.85" />
 
-                    <input
-                      value={line.note || ""}
-                      onChange={(e) => updateJournal(i, "note", e.target.value)}
-                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-white"
-                    />
+                    <div>
+                      <input
+                        value={line.note || ""}
+                        onChange={(e) => updateJournal(i, "note", e.target.value)}
+                        className="w-full rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-white"
+                      />
+                      {journalLineError(line) && (
+                        <div className="mt-1 text-xs font-bold text-red-400">
+                          {journalLineError(line)}
+                        </div>
+                      )}
+                    </div>
 
                     <button onClick={() => deleteJournal(i)} className="rounded bg-red-700 px-3 py-1 text-sm font-bold">
                       ×
