@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-7-add-stop-fix";
+const STORAGE_KEY = "campaign-trading-journal-v1-8-real-qty-fix";
 
 const actions = [
   "כניסה",
@@ -139,49 +139,95 @@ function getPositionMath(row) {
   let realizedPnl = 0;
   let hasRealized = false;
 
-  const hasJournalBuys = journal.some(
-    (j) => (j.action === "כניסה" || j.action === "הוספה") && num(j.qty) && num(j.price)
-  );
+  const validBuyLines = journal.filter((j) => {
+    const qty = num(j.qty);
+    const price = num(j.price);
+    return (j.action === "כניסה" || j.action === "הוספה") && qty > 0 && price;
+  });
+
+  const hasJournalBuys = validBuyLines.length > 0;
 
   if (!hasJournalBuys) {
     const qty = num(row.shares) || 0;
     const price = num(row.entry) || 0;
-    openQty = qty;
-    openCost = qty * price;
-    buyQty = qty;
-    buyCost = qty * price;
+
+    if (qty > 0 && price > 0) {
+      openQty = qty;
+      openCost = qty * price;
+      buyQty = qty;
+      buyCost = qty * price;
+    }
+  }
+
+  function buy(qty, price) {
+    if (!qty || !price || qty <= 0 || price <= 0) return;
+
+    openQty += qty;
+    openCost += qty * price;
+    buyQty += qty;
+    buyCost += qty * price;
+  }
+
+  function sell(qty, price) {
+    if (!qty || !price || qty <= 0 || price <= 0 || openQty <= 0) return;
+
+    const actualQty = Math.min(qty, openQty);
+    const avgBeforeSale = openCost / openQty;
+    const saleValue = actualQty * price;
+    const costRemoved = actualQty * avgBeforeSale;
+
+    realizedPnl += saleValue - costRemoved;
+    sellQty += actualQty;
+    sellValue += saleValue;
+
+    openQty -= actualQty;
+    openCost -= costRemoved;
+
+    if (openQty <= 0.000001) {
+      openQty = 0;
+      openCost = 0;
+    }
+
+    hasRealized = true;
   }
 
   journal.forEach((j) => {
+    const action = j.action;
+    const rawQty = num(j.qty);
     const price = num(j.price);
+
     if (!price) return;
 
-    if (j.action === "כניסה" || j.action === "הוספה") {
-      const qty = num(j.qty);
-      if (!qty) return;
-      openQty += qty;
-      openCost += qty * price;
-      buyQty += qty;
-      buyCost += qty * price;
+    // כניסה / הוספה עם Qty חיובי = קנייה
+    // כניסה / הוספה עם Qty שלילי = הפחתת כמות, למשל סטופ/מכירה שהוזנה במינוס
+    if (action === "כניסה" || action === "הוספה") {
+      if (!rawQty) return;
+
+      if (rawQty > 0) {
+        buy(rawQty, price);
+      } else {
+        sell(Math.abs(rawQty), price);
+      }
+
       return;
     }
 
-    if (j.action === "יציאה חלקית" || j.action === "יציאה מלאה") {
-      const requestedQty = num(j.qty);
-      const qty = j.action === "יציאה מלאה" ? requestedQty || openQty : requestedQty || 0;
-      if (!qty || !openQty) return;
+    // סטופ הוספה = מכירת יחידת הוספה. לא משנה Global Stop.
+    if (action === "סטופ הוספה") {
+      if (!rawQty) return;
+      sell(Math.abs(rawQty), price);
+      return;
+    }
 
-      const actualQty = Math.min(qty, openQty);
-      const avgBeforeSale = openCost / openQty;
-      const saleValue = actualQty * price;
-      const costRemoved = actualQty * avgBeforeSale;
+    if (action === "יציאה חלקית") {
+      if (!rawQty) return;
+      sell(Math.abs(rawQty), price);
+      return;
+    }
 
-      realizedPnl += saleValue - costRemoved;
-      sellQty += actualQty;
-      sellValue += saleValue;
-      openQty -= actualQty;
-      openCost -= costRemoved;
-      hasRealized = true;
+    if (action === "יציאה מלאה") {
+      const closeQty = rawQty ? Math.abs(rawQty) : openQty;
+      sell(closeQty, price);
     }
   });
 
@@ -303,7 +349,11 @@ function closedReturn(row) {
 function lastBuyPrice(journal, fallback) {
   const line = [...(journal || [])]
     .reverse()
-    .find((j) => (j.action === "כניסה" || j.action === "הוספה") && String(j.price || "").trim());
+    .find((j) => {
+      const qty = num(j.qty);
+      return (j.action === "כניסה" || j.action === "הוספה") && qty > 0 && String(j.price || "").trim();
+    });
+
   return line ? line.price : fallback || "";
 }
 
@@ -1633,7 +1683,7 @@ export default function ClosetDashboard() {
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
-                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה מפחית מניות פתוחות אבל לא משנה את ה־Global Stop.
+                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות אבל לא משנים את ה־Global Stop.
               </div>
 
               <div className="mb-3 flex items-center justify-between">
@@ -1681,7 +1731,7 @@ export default function ClosetDashboard() {
                       onChange={(e) => updateJournal(i, "qty", e.target.value)}
                       placeholder="מניות (+/-)"
                       className={`rounded border px-2 py-1 text-center text-amber-300 ${
-                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית") && !num(line.qty)
+                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "סטופ הוספה") && !num(line.qty)
                           ? "border-red-500 bg-red-500/10"
                           : "border-zinc-800 bg-zinc-950"
                       }`}
@@ -1693,7 +1743,7 @@ export default function ClosetDashboard() {
                       onChange={(e) => updateJournal(i, "price", e.target.value)}
                       placeholder="מחיר למניה"
                       className={`rounded border px-2 py-1 text-center text-white ${
-                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "יציאה מלאה") && !num(line.price)
+                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "יציאה מלאה" || line.action === "סטופ הוספה") && !num(line.price)
                           ? "border-red-500 bg-red-500/10"
                           : "border-zinc-800 bg-zinc-950"
                       }`}
