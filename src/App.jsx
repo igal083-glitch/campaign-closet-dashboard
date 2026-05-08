@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-9-journal-validation";
+const STORAGE_KEY = "campaign-trading-journal-v1-10-stop-add-final";
 
 const actions = [
   "כניסה",
@@ -104,9 +104,21 @@ function journalLineError(line) {
   const action = line?.action || "";
   const qty = num(line?.qty);
   const price = num(line?.price);
+  const stop = num(line?.stop);
 
   if (isQtyRequired(action) && !qty) return "חסר Qty — השורה לא מחושבת";
-  if (isPriceRequired(action) && !price) return "חסר Price — השורה לא מחושבת";
+
+  if ((action === "כניסה" || action === "הוספה") && qty > 0 && !price) {
+    return "חסר Price — שורת קנייה לא מחושבת";
+  }
+
+  if ((action === "סטופ הוספה" || action === "יציאה חלקית" || qty < 0) && !price && !stop) {
+    return "חסר Price או Global Stop — שורת מכירה לא מחושבת";
+  }
+
+  if (action === "יציאה מלאה" && !price && !stop) {
+    return "חסר Price או Global Stop — יציאה מלאה לא מחושבת";
+  }
 
   return "";
 }
@@ -158,6 +170,14 @@ function getPositionMath(row) {
   let sellValue = 0;
   let realizedPnl = 0;
   let hasRealized = false;
+
+  function effectiveSellPrice(line) {
+    const directPrice = num(line.price);
+    const lineStop = num(line.stop);
+    const globalStop = num(row.stop);
+
+    return directPrice || lineStop || globalStop || null;
+  }
 
   const validBuyLines = journal.filter((j) => {
     const qty = num(j.qty);
@@ -214,40 +234,40 @@ function getPositionMath(row) {
   journal.forEach((j) => {
     const action = j.action;
     const rawQty = num(j.qty);
-    const price = num(j.price);
+    const buyPrice = num(j.price);
+    const sellPrice = effectiveSellPrice(j);
 
-    if (!price) return;
-
-    // כניסה / הוספה עם Qty חיובי = קנייה
-    // כניסה / הוספה עם Qty שלילי = הפחתת כמות, למשל סטופ/מכירה שהוזנה במינוס
+    // קנייה רגילה: חייבת Qty חיובי + Price
     if (action === "כניסה" || action === "הוספה") {
       if (!rawQty) return;
 
       if (rawQty > 0) {
-        buy(rawQty, price);
+        buy(rawQty, buyPrice);
       } else {
-        sell(Math.abs(rawQty), price);
+        // Qty שלילי = מכירה/הפחתת כמות. מחיר ביצוע נלקח מ-Price, ואם חסר אז מ-Global Stop.
+        sell(Math.abs(rawQty), sellPrice);
       }
 
       return;
     }
 
     // סטופ הוספה = מכירת יחידת הוספה. לא משנה Global Stop.
+    // מחיר ביצוע נלקח מ-Price, ואם חסר אז מ-Global Stop באותה שורה, ואם חסר אז מהסטופ הכולל של העסקה.
     if (action === "סטופ הוספה") {
       if (!rawQty) return;
-      sell(Math.abs(rawQty), price);
+      sell(Math.abs(rawQty), sellPrice);
       return;
     }
 
     if (action === "יציאה חלקית") {
       if (!rawQty) return;
-      sell(Math.abs(rawQty), price);
+      sell(Math.abs(rawQty), sellPrice);
       return;
     }
 
     if (action === "יציאה מלאה") {
       const closeQty = rawQty ? Math.abs(rawQty) : openQty;
-      sell(closeQty, price);
+      sell(closeQty, sellPrice);
     }
   });
 
@@ -1703,7 +1723,7 @@ export default function ClosetDashboard() {
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
-                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות אבל לא משנים את ה־Global Stop. שורה בלי Price לא מחושבת.
+                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות. סטופ הוספה או Qty שלילי מפחיתים מניות פתוחות אבל לא משנים את ה־Global Stop. אם Price ריק, המערכת משתמשת ב־Global Stop כמחיר ביצוע. בסטופ הוספה אפשר להשתמש ב-Price או ב-Global Stop כמחיר ביצוע.
               </div>
 
               <div className="mb-3 flex items-center justify-between">
