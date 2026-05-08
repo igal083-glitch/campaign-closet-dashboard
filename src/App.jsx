@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-stable-fix-round";
+const STORAGE_KEY = "campaign-trading-journal-v1-7-add-stop-fix";
 
 const actions = [
   "כניסה",
@@ -1633,7 +1633,7 @@ export default function ClosetDashboard() {
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
-                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה.
+                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה. סטופ הוספה מפחית מניות פתוחות אבל לא משנה את ה־Global Stop.
               </div>
 
               <div className="mb-3 flex items-center justify-between">
@@ -1679,7 +1679,7 @@ export default function ClosetDashboard() {
                     <input
                       value={line.qty || ""}
                       onChange={(e) => updateJournal(i, "qty", e.target.value)}
-                      placeholder="מספר מניות"
+                      placeholder="מניות (+/-)"
                       className={`rounded border px-2 py-1 text-center text-amber-300 ${
                         (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית") && !num(line.qty)
                           ? "border-red-500 bg-red-500/10"
