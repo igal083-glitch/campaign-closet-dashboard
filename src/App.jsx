@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "campaign-trading-journal-v1-6-stop-sync";
+const STORAGE_KEY = "campaign-trading-journal-v1-stable-fix-round";
 
 const actions = [
   "כניסה",
@@ -810,6 +810,44 @@ export default function ClosetDashboard() {
     patchRow(selected.id, (old) => ({ ...old, [field]: value }));
   }
 
+  function updateCoreField(field, value) {
+    if (!selected) return;
+
+    patchRow(selected.id, (old) => {
+      const next = { ...old, [field]: value };
+      const journal = [...(old.journal || [])];
+
+      if (field === "shares" || field === "entry") {
+        let entryIndex = journal.findIndex((j) => j.action === "כניסה");
+
+        if (entryIndex === -1) {
+          journal.unshift({
+            date: old.date || today(),
+            action: "כניסה",
+            qty: field === "shares" ? value : old.shares || "",
+            price: field === "entry" ? value : old.entry || "",
+            stop: old.stop || "",
+            note: "כניסת ליבה",
+          });
+        } else {
+          journal[entryIndex] = {
+            ...journal[entryIndex],
+            qty: field === "shares" ? value : journal[entryIndex].qty,
+            price: field === "entry" ? value : journal[entryIndex].price,
+          };
+        }
+
+        next.journal = journal;
+      }
+
+      if (field === "stop") {
+        next.stop = value;
+      }
+
+      return next;
+    });
+  }
+
   function addJournalLine() {
     if (!selected) return;
 
@@ -829,10 +867,14 @@ export default function ClosetDashboard() {
       const math = getPositionMath({ ...old, journal });
       const exit = [...journal].reverse().find((j) => j.action === "יציאה מלאה" && String(j.price || "").trim());
 
+      const lastBuy = lastBuyPrice(journal, old.lastAdd);
+      const lastStop = [...journal].reverse().find((j) => String(j.stop || "").trim());
+
       return {
         ...old,
         journal,
-        stop: field === "stop" ? value : old.stop,
+        stop: field === "stop" ? value : (lastStop ? lastStop.stop : old.stop),
+        lastAdd: lastBuy || old.lastAdd,
         status: exit ? "סגור" : old.status,
         closedDate: exit ? old.closedDate || exit.date || today() : old.closedDate,
         exitPrice: exit ? exit.price : old.exitPrice,
@@ -842,7 +884,21 @@ export default function ClosetDashboard() {
 
   function deleteJournal(index) {
     if (!selected) return;
-    patchRow(selected.id, (old) => ({ ...old, journal: (old.journal || []).filter((_, i) => i !== index) }));
+
+    patchRow(selected.id, (old) => {
+      const journal = (old.journal || []).filter((_, i) => i !== index);
+      const exit = [...journal].reverse().find((j) => j.action === "יציאה מלאה" && String(j.price || "").trim());
+      const lastStop = [...journal].reverse().find((j) => String(j.stop || "").trim());
+
+      return {
+        ...old,
+        journal,
+        status: exit ? "סגור" : "פעיל",
+        closedDate: exit ? old.closedDate || exit.date || today() : "",
+        exitPrice: exit ? exit.price : "",
+        stop: lastStop ? lastStop.stop : old.stop,
+      };
+    });
   }
 
   function uploadChart(file) {
@@ -923,7 +979,7 @@ export default function ClosetDashboard() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="text-right">
             <div className="mb-2 inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-300">
-              V1.2 · CALCULATION FIX · TRADING JOURNAL
+              V1 STABLE FIX ROUND · TRADING JOURNAL
             </div>
             <h1 className="text-4xl font-extrabold">Campaign Trading Journal</h1>
             <p className="mt-1 text-sm text-zinc-400">
@@ -947,11 +1003,11 @@ export default function ClosetDashboard() {
         </div>
       </div>
 
-      <div className="mb-5 grid gap-3 md:grid-cols-4 xl:grid-cols-12">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6">
         {cards.map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-right">
             <div className="text-xs text-zinc-500">{label}</div>
-            <div className={`mt-1 text-2xl font-extrabold ${color}`} dir="ltr">
+            <div className={`mt-1 break-words text-xl font-extrabold leading-tight ${color}`} dir="ltr">
               {value}
             </div>
           </div>
@@ -1053,7 +1109,7 @@ export default function ClosetDashboard() {
             </div>
 
             <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-red-400" dir="ltr">
-              {row.stop || "—"}
+              {displayStop(row) || "—"}
             </div>
 
             <div
@@ -1080,18 +1136,15 @@ export default function ClosetDashboard() {
               {row.lastAdd || "—"}
             </div>
 
-            <select
-              value={row.status}
-              onChange={(e) => updateVisibleRow(index, "status", e.target.value)}
+            <div
               className={`rounded border px-2 py-1 text-center text-xs font-bold ${
                 row.status === "פעיל"
                   ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
                   : "border-red-500/40 bg-red-500/20 text-red-400"
               }`}
             >
-              <option>פעיל</option>
-              <option>סגור</option>
-            </select>
+              {row.status}
+            </div>
 
             <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center font-bold text-amber-300" dir="ltr">
               {row.exitPrice || "—"}
@@ -1319,7 +1372,7 @@ export default function ClosetDashboard() {
                     <div className="mb-1 text-xs text-zinc-500">כמות בסיס / Shares</div>
                     <input
                       value={selected.shares || ""}
-                      onChange={(e) => updateSelected("shares", e.target.value)}
+                      onChange={(e) => updateCoreField("shares", e.target.value)}
                       className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-amber-300"
                       dir="ltr"
                     />
@@ -1328,7 +1381,7 @@ export default function ClosetDashboard() {
                     <div className="mb-1 text-xs text-zinc-500">כניסה בסיסית / Entry</div>
                     <input
                       value={selected.entry || ""}
-                      onChange={(e) => updateSelected("entry", e.target.value)}
+                      onChange={(e) => updateCoreField("entry", e.target.value)}
                       className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-blue-300"
                       dir="ltr"
                     />
@@ -1337,7 +1390,7 @@ export default function ClosetDashboard() {
                     <div className="mb-1 text-xs text-zinc-500">סטופ כולל / Stop</div>
                     <input
                       value={selected.stop || ""}
-                      onChange={(e) => updateSelected("stop", e.target.value)}
+                      onChange={(e) => updateCoreField("stop", e.target.value)}
                       className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 text-center font-bold text-red-400"
                       dir="ltr"
                     />
@@ -1580,7 +1633,7 @@ export default function ClosetDashboard() {
           {drawerTab === "journal" && (
             <div className="rounded border border-zinc-800 bg-black p-3">
               <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-right text-xs text-amber-200">
-                כלל חישוב: Qty = מספר מניות בלבד, Price = מחיר למניה. הפוזיציה מחושבת כ־Open Shares × Current Price.
+                כלל חישוב: Qty = מספר מניות בלבד. Price = מחיר למניה. יציאה חלקית עם Qty מפחיתה כמות פתוחה. יציאה מלאה סוגרת את העסקה.
               </div>
 
               <div className="mb-3 flex items-center justify-between">
@@ -1594,8 +1647,8 @@ export default function ClosetDashboard() {
                 <div className="grid min-w-[860px] grid-cols-[120px_140px_100px_120px_120px_1fr_60px] gap-2 border-b border-zinc-800 pb-2 text-xs font-bold text-zinc-500">
                   <div>תאריך</div>
                   <div>פעולה</div>
-                  <div>כמות</div>
-                  <div>מחיר</div>
+                  <div>Qty מניות</div>
+                  <div>Price למניה</div>
                   <div>Global Stop</div>
                   <div>הערה</div>
                   <div></div>
@@ -1626,14 +1679,24 @@ export default function ClosetDashboard() {
                     <input
                       value={line.qty || ""}
                       onChange={(e) => updateJournal(i, "qty", e.target.value)}
-                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-amber-300"
+                      placeholder="מספר מניות"
+                      className={`rounded border px-2 py-1 text-center text-amber-300 ${
+                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית") && !num(line.qty)
+                          ? "border-red-500 bg-red-500/10"
+                          : "border-zinc-800 bg-zinc-950"
+                      }`}
                       dir="ltr"
                     />
 
                     <input
                       value={line.price || ""}
                       onChange={(e) => updateJournal(i, "price", e.target.value)}
-                      className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-center text-white"
+                      placeholder="מחיר למניה"
+                      className={`rounded border px-2 py-1 text-center text-white ${
+                        (line.action === "כניסה" || line.action === "הוספה" || line.action === "יציאה חלקית" || line.action === "יציאה מלאה") && !num(line.price)
+                          ? "border-red-500 bg-red-500/10"
+                          : "border-zinc-800 bg-zinc-950"
+                      }`}
                       dir="ltr"
                     />
 
@@ -1751,7 +1814,7 @@ export default function ClosetDashboard() {
                 <div className="text-blue-300" dir="ltr">{money(positionValue(row))}</div>
                 <div className={(positionRisk(row) || 0) > 0 ? "text-red-400" : "text-zinc-500"} dir="ltr">{money(positionRisk(row))}</div>
                 <div className="text-amber-300" dir="ltr">{percent(riskPercent(row))}</div>
-                <div className="text-red-400" dir="ltr">{row.stop || "—"}</div>
+                <div className="text-red-400" dir="ltr">{displayStop(row) || "—"}</div>
                 <div className="text-zinc-300">{row.addTrigger || "חסר Trigger"}</div>
               </div>
             ))}
